@@ -4,15 +4,11 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"log"
 	"time"
 )
 
 func main() {
-	log.Println("Welcome to Gogios!")
-
 	configFile := flag.String("cfg", "/etc/gogios.json", "The config file")
-
 	flag.Parse()
 
 	config, err := newConfig(*configFile)
@@ -20,14 +16,26 @@ func main() {
 		panic(err)
 	}
 
-	for _, check := range config.Checks {
+	state, err := newState(config)
+	if err != nil {
+		notifyError(config, err)
+	}
+
+	for name, check := range config.Checks {
 		ctx, cancel := context.WithTimeout(context.Background(),
 			time.Duration(config.CheckTimeoutS)*time.Second)
 		defer cancel()
 
-		if output, status := check.execute(ctx); status != ok {
+		output, status := check.execute(ctx)
+		stateChanged := state.update(name, status)
+
+		if status != ok || stateChanged {
 			subject := fmt.Sprintf("GOGIOS %s: %s", codeToString(status), check.Name)
 			notify(config, subject, output)
 		}
+	}
+
+	if err := state.persist(); err != nil {
+		notifyError(config, err)
 	}
 }

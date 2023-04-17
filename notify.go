@@ -26,3 +26,7 @@ func notify(config config, subject, body string) error {
 	return smtp.SendMail(config.SMTPServer, nil, config.EmailFrom,
 		[]string{config.EmailTo}, []byte(message))
 }
+
+func notifyError(config config, err error) error {
+	return notify(config, fmt.Sprintf("GOGIOS: An error occured: %v", err), err.Error())
+}

@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"context"
-	"log"
 	"os/exec"
 )
 
@@ -19,7 +18,6 @@ func (c check) execute(ctx context.Context) (string, int) {
 	var bytes bytes.Buffer
 	cmd.Stdout = &bytes
 	cmd.Stderr = &bytes
-	log.Println(ctx)
 
 	if err := cmd.Run(); err != nil {
 		if ctx.Err() == context.DeadlineExceeded {

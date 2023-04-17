@@ -14,7 +14,7 @@ type config struct {
 	SMTPServer    string `json:"omitempty"`
 	StateDir      string `json:"omitempty"`
 	CheckTimeoutS int
-	Checks        []check
+	Checks        map[string]check
 }
 
 func newConfig(configFile string) (config, error) {
@@ -51,14 +51,6 @@ func newConfig(configFile string) (config, error) {
 	if config.StateDir == "" {
 		config.StateDir = "."
 		log.Println("Set StateDir to " + config.StateDir)
-	}
-
-	dedup := make(map[string]interface{})
-	for _, check := range config.Checks {
-		if _, ok := dedup[check.Name]; ok {
-			return config, fmt.Errorf("Duplicate definition of check %s", check.Name)
-		}
-		dedup[check.Name] = struct{}{}
 	}
 
 	return config, nil
