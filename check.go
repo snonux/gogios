@@ -7,7 +7,6 @@ import (
 )
 
 type check struct {
-	Name   string
 	Plugin string
 	Args   []string
 }

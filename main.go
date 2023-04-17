@@ -30,7 +30,7 @@ func main() {
 		stateChanged := state.update(name, status)
 
 		if status != ok || stateChanged {
-			subject := fmt.Sprintf("GOGIOS %s: %s", codeToString(status), check.Name)
+			subject := fmt.Sprintf("GOGIOS %s: %s", codeToString(status), name)
 			notify(config, subject, output)
 		}
 	}
