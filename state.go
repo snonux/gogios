@@ -121,7 +121,7 @@ func (s state) report() (string, string, bool) {
 		return count
 	}
 
-	sb.WriteString("This is the recent Googios report!\n\n")
+	sb.WriteString("This is the recent Gogios report!\n\n")
 
 	numCriticals := f(func(i int) bool { return i == 2 })
 	if numCriticals > 0 {
