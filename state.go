@@ -18,7 +18,8 @@ func newState(config config) (state, error) {
 	state := state{stateFile, make(map[string]int)}
 
 	if _, err := os.Stat(stateFile); err != nil {
-		return state, err
+		// OK, may be first run with no state yet.
+		return state, nil
 	}
 
 	file, err := os.Open(stateFile)
