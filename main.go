@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"flag"
-	"fmt"
 	"log"
 	"sync"
 	"time"
@@ -54,13 +53,7 @@ func main() {
 			defer cancel()
 
 			output, status := check.execute(ctx)
-			stateChanged := state.update(name, status)
-
-			if status != ok || stateChanged {
-				subject := fmt.Sprintf("GOGIOS %s: %s", codeToString(status), name)
-				notify(config, subject, output)
-			}
-
+			state.update(name, output, status)
 		}(entry.name, entry.check)
 	}
 
@@ -69,5 +62,9 @@ func main() {
 
 	if err := state.persist(); err != nil {
 		notifyError(config, err)
+	}
+
+	if subject, body, changed := state.report(); changed {
+		notify(config, subject, body)
 	}
 }

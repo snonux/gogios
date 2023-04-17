@@ -7,7 +7,7 @@ import (
 )
 
 func notify(config config, subject, body string) error {
-	log.Println("emailNotify", subject, body)
+	log.Println("notify", subject, body)
 
 	headers := make(map[string]string)
 	headers["From"] = config.EmailFrom

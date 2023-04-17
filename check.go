@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"os/exec"
+	"strings"
 )
 
 type check struct {
@@ -24,5 +25,5 @@ func (c check) execute(ctx context.Context) (string, int) {
 		}
 	}
 
-	return bytes.String(), cmd.ProcessState.ExitCode()
+	return strings.TrimSuffix(bytes.String(), "\n"), cmd.ProcessState.ExitCode()
 }
