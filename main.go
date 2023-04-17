@@ -53,6 +53,8 @@ func main() {
 			defer cancel()
 
 			output, status := check.execute(ctx)
+			// TODO: Send the results through a channel, so we dont have to put a mutex
+			// into state.
 			state.update(name, output, status)
 		}(entry.name, entry.check)
 	}
