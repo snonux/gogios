@@ -7,26 +7,23 @@ import (
 	"log"
 	"os"
 	"strings"
-	"sync"
 )
 
 type checkState struct {
 	Status     int
 	PrevStatus int
-	Output     string
+	output     string
 }
 
 type state struct {
 	stateFile string
 	checks    map[string]checkState
-	mutex     *sync.Mutex
 }
 
 func newState(config config) (state, error) {
 	s := state{
 		stateFile: fmt.Sprintf("%s/state.json", config.StateDir),
 		checks:    make(map[string]checkState),
-		mutex:     &sync.Mutex{},
 	}
 
 	if _, err := os.Stat(s.stateFile); err != nil {
@@ -40,18 +37,15 @@ func newState(config config) (state, error) {
 	}
 	defer file.Close()
 
-	// Read the file content
 	bytes, err := ioutil.ReadAll(file)
 	if err != nil {
 		return s, err
 	}
 
-	// Parse the JSON content
 	if err := json.Unmarshal(bytes, &s.checks); err != nil {
 		return s, err
 	}
 
-	// Clean up obsolete state information
 	var obsolete []string
 	for name := range s.checks {
 		if _, ok := config.Checks[name]; !ok {
@@ -67,25 +61,16 @@ func newState(config config) (state, error) {
 	return s, nil
 }
 
-func (s state) update(name, output string, status int) {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-
-	prevState, ok := s.checks[name]
-	if !ok {
-		log.Printf("State of %s: %d (new)", name, status)
-		s.checks[name] = checkState{status, unknown, output}
-		return
+func (s state) update(result checkResult) {
+	prevStatus := unknown
+	prevState, ok := s.checks[result.name]
+	if ok {
+		prevStatus = prevState.Status
 	}
 
-	if prevState.Status != status {
-		log.Printf("State of %s: %d -> %d (changed)", name, prevState.Status, status)
-		s.checks[name] = checkState{status, prevState.Status, output}
-		return
-	}
-
-	log.Printf("State of %s: %d (unchanged)", name, status)
-	s.checks[name] = checkState{status, prevState.Status, output}
+	checkState := checkState{result.status, prevStatus, result.output}
+	s.checks[result.name] = checkState
+	log.Println(result.name, checkState)
 }
 
 func (s state) persist() error {
@@ -103,21 +88,25 @@ func (s state) report() (string, string, bool) {
 	f := func(filter func(i int) bool) int {
 		var count int
 		for name, checkState := range s.checks {
-			if filter(checkState.Status) {
-				count++
-				if checkState.Status != checkState.PrevStatus {
-					sb.WriteString(codeToString(checkState.PrevStatus))
-					sb.WriteString("->")
-					changed = true
-				}
-				sb.WriteString(codeToString(checkState.Status))
-				sb.WriteString(": ")
-				sb.WriteString(name)
-				sb.WriteString(" ==>> ")
-				sb.WriteString(checkState.Output)
-				sb.WriteString("\n")
+			if !filter(checkState.Status) {
+				continue
 			}
+			count++
+
+			if checkState.Status != checkState.PrevStatus {
+				sb.WriteString(codeToString(checkState.PrevStatus))
+				sb.WriteString("->")
+				changed = true
+			}
+
+			sb.WriteString(codeToString(checkState.Status))
+			sb.WriteString(": ")
+			sb.WriteString(name)
+			sb.WriteString(" ==>> ")
+			sb.WriteString(checkState.output)
+			sb.WriteString("\n")
 		}
+
 		return count
 	}
 
