@@ -2,6 +2,7 @@
   "EmailTo": "paul",
   "EmailFrom": "gogios@buetow.org",
   "CheckTimeoutS": 10,
+  "CheckConcurrency": 2,
   "Checks": {
     "foo.zone HTTP IPv4": {
       "Plugin": "/usr/local/libexec/nagios/check_http",

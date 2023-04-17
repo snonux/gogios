@@ -9,12 +9,13 @@ import (
 )
 
 type config struct {
-	EmailTo       string
-	EmailFrom     string
-	SMTPServer    string `json:"omitempty"`
-	StateDir      string `json:"omitempty"`
-	CheckTimeoutS int
-	Checks        map[string]check
+	EmailTo          string
+	EmailFrom        string
+	SMTPServer       string `json:"omitempty"`
+	StateDir         string `json:"omitempty"`
+	CheckTimeoutS    int
+	CheckConcurrency int
+	Checks           map[string]check
 }
 
 func newConfig(configFile string) (config, error) {
