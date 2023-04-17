@@ -35,9 +35,13 @@ func (c check) execute(ctx context.Context, name string) checkResult {
 		}
 	}
 
+	// Remove Nagios perf data from output and trim whitespaces
+	parts := strings.Split(bytes.String(), "|")
+	output := strings.TrimSpace(parts[0])
+
 	return checkResult{
 		name:   name,
-		output: strings.TrimSuffix(bytes.String(), "\n"),
+		output: output,
 		status: cmd.ProcessState.ExitCode(),
 	}
 }
