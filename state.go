@@ -11,9 +11,9 @@ import (
 )
 
 type checkState struct {
-	status     int
-	prevStatus int
-	output     string
+	Status     int
+	PrevStatus int
+	Output     string
 }
 
 type state struct {
@@ -78,14 +78,14 @@ func (s state) update(name, output string, status int) {
 		return
 	}
 
-	if prevState.status != status {
-		log.Printf("State of %s: %d -> %d (changed)", name, prevState, status)
-		s.checks[name] = checkState{status, prevState.status, output}
+	if prevState.Status != status {
+		log.Printf("State of %s: %d -> %d (changed)", name, prevState.Status, status)
+		s.checks[name] = checkState{status, prevState.Status, output}
 		return
 	}
 
 	log.Printf("State of %s: %d (unchanged)", name, status)
-	s.checks[name] = checkState{status, prevState.status, output}
+	s.checks[name] = checkState{status, prevState.Status, output}
 }
 
 func (s state) persist() error {
@@ -103,18 +103,18 @@ func (s state) report() (string, string, bool) {
 	f := func(filter func(i int) bool) int {
 		var count int
 		for name, checkState := range s.checks {
-			if filter(checkState.status) {
+			if filter(checkState.Status) {
 				count++
-				if checkState.status != checkState.prevStatus {
-					sb.WriteString(codeToString(checkState.prevStatus))
+				if checkState.Status != checkState.PrevStatus {
+					sb.WriteString(codeToString(checkState.PrevStatus))
 					sb.WriteString("->")
 					changed = true
 				}
-				sb.WriteString(codeToString(checkState.status))
+				sb.WriteString(codeToString(checkState.Status))
 				sb.WriteString(": ")
 				sb.WriteString(name)
 				sb.WriteString(" ==>> ")
-				sb.WriteString(checkState.output)
+				sb.WriteString(checkState.Output)
 				sb.WriteString("\n")
 			}
 		}
