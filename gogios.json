@@ -1,0 +1,17 @@
+{
+  "EmailTo": "paul",
+  "EmailFrom": "gogios@buetow.org",
+  "CheckTimeoutS": 10,
+  "Checks": [
+    {
+      "Name": "www.foo.zone HTTP IPv4",
+      "Plugin": "/usr/local/libexec/nagios/check_http",
+      "Args": ["www.foo.zone", "-4"]
+    },
+    {
+      "Name": "www.foo.zone HTTP IPv6",
+      "Plugin": "/usr/local/libexec/nagios/check_http",
+      "Args": ["www.foo.zone", "-6"]
+    }
+  ]
+}
