@@ -17,7 +17,7 @@ func Run(configFile string) {
 		notifyError(config, err)
 	}
 
-	if subject, body, changed := state.report(); changed {
+	if subject, body, doNotify := state.report(); doNotify {
 		notify(config, subject, body)
 	}
 }
