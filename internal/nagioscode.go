@@ -11,11 +11,11 @@ const (
 
 func (n nagiosCode) Str() string {
 	switch n {
-	case 0:
+	case ok:
 		return "OK"
-	case 1:
+	case warning:
 		return "WARNING"
-	case 2:
+	case critical:
 		return "CRITICAL"
 	default:
 		return "UNKNOWN"
