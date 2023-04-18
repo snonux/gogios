@@ -15,6 +15,10 @@ type checkState struct {
 	output     string
 }
 
+func (cs checkState) changed() bool {
+	return cs.Status != cs.PrevStatus
+}
+
 type state struct {
 	stateFile string
 	checks    map[string]checkState
@@ -68,9 +72,9 @@ func (s state) update(result checkResult) {
 		prevStatus = prevState.Status
 	}
 
-	checkState := checkState{result.status, prevStatus, result.output}
-	s.checks[result.name] = checkState
-	log.Println(result.name, checkState)
+	cs := checkState{result.status, prevStatus, result.output}
+	s.checks[result.name] = cs
+	log.Println(result.name, cs)
 }
 
 func (s state) persist() error {
@@ -83,58 +87,95 @@ func (s state) persist() error {
 
 func (s state) report() (string, string, bool) {
 	var sb strings.Builder
-	var changed bool
-
-	f := func(filter func(n nagiosCode) bool) int {
-		var count int
-		for name, checkState := range s.checks {
-			if !filter(checkState.Status) {
-				continue
-			}
-			count++
-
-			if checkState.Status != checkState.PrevStatus {
-				sb.WriteString(nagiosCode(checkState.PrevStatus).Str())
-				sb.WriteString("->")
-				changed = true
-			}
-
-			sb.WriteString(nagiosCode(checkState.Status).Str())
-			sb.WriteString(": ")
-			sb.WriteString(name)
-			sb.WriteString(" ==>> ")
-			sb.WriteString(checkState.output)
-			sb.WriteString("\n")
-		}
-
-		return count
-	}
 
 	sb.WriteString("This is the recent Gogios report!\n\n")
 
-	numCriticals := f(func(n nagiosCode) bool { return n == 2 })
-	if numCriticals > 0 {
-		sb.WriteString("\n")
-	}
+	sb.WriteString("# Alerts with status changed:\n\n")
+	changed := s.reportChanged(&sb)
 
-	numWarnings := f(func(n nagiosCode) bool { return n == 1 })
-	if numWarnings > 0 {
-		sb.WriteString("\n")
-	}
-
-	numUnknowns := f(func(n nagiosCode) bool { return n > 2 })
-	if numUnknowns > 0 {
-		sb.WriteString("\n")
-	}
-
-	numOks := f(func(n nagiosCode) bool { return n == 0 })
-	if numOks > 0 {
-		sb.WriteString("\n")
-	}
+	sb.WriteString("# Unhandled alerts:\n\n")
+	numCriticals, numWarnings, numUnknown, numOK := s.reportUnhandled(&sb)
 
 	sb.WriteString("Have a nice day!\n")
-	subject := fmt.Sprintf("GOGIOS Report [C:%d W:%d U:%d OK:%d]",
-		numCriticals, numWarnings, numUnknowns, numOks)
 
-	return subject, sb.String(), changed
+	subject := fmt.Sprintf("GOGIOS Report [C:%d W:%d U:%d OK:%d]",
+		numCriticals, numWarnings, numUnknown, numOK)
+
+	return subject, sb.String(), changed || numCriticals > 0
+}
+
+func (s state) reportChanged(sb *strings.Builder) (changed bool) {
+	if 0 < s.reportBy(sb, func(cs checkState) bool {
+		return cs.Status == critical && cs.changed()
+	}) {
+		changed = true
+	}
+
+	if 0 < s.reportBy(sb, func(cs checkState) bool {
+		return cs.Status == warning && cs.changed()
+	}) {
+		changed = true
+	}
+
+	if 0 < s.reportBy(sb, func(cs checkState) bool {
+		return cs.Status == unknown && cs.changed()
+	}) {
+		changed = true
+	}
+
+	if 0 < s.reportBy(sb, func(cs checkState) bool {
+		return cs.Status == ok && cs.changed()
+	}) {
+		changed = true
+	}
+
+	return
+}
+
+func (s state) reportUnhandled(sb *strings.Builder) (numCriticals, numWarnings,
+	numUnknown, numOK int) {
+
+	numCriticals = s.reportBy(sb, func(cs checkState) bool { return cs.Status == critical })
+	numWarnings = s.reportBy(sb, func(cs checkState) bool { return cs.Status == warning })
+	numUnknown = s.reportBy(sb, func(cs checkState) bool { return cs.Status == unknown })
+	numOK = s.countBy(func(cs checkState) bool { return cs.Status == ok })
+
+	return
+}
+
+func (s state) reportBy(sb *strings.Builder,
+	filter func(cs checkState) bool) (count int) {
+
+	for name, cs := range s.checks {
+		if !filter(cs) {
+			continue
+		}
+		count++
+
+		if cs.changed() {
+			sb.WriteString(nagiosCode(cs.PrevStatus).Str())
+			sb.WriteString("->")
+		}
+
+		sb.WriteString(nagiosCode(cs.Status).Str())
+		sb.WriteString(": ")
+		sb.WriteString(name)
+		sb.WriteString(" ==>> ")
+		sb.WriteString(cs.output)
+		sb.WriteString("\n")
+	}
+
+	if count > 0 {
+		sb.WriteString("\n")
+	}
+	return
+}
+
+func (s state) countBy(filter func(cs checkState) bool) (count int) {
+	for _, cs := range s.checks {
+		if filter(cs) {
+			count++
+		}
+	}
+	return
 }
