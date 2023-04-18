@@ -13,12 +13,12 @@ func main() {
 		panic(err)
 	}
 
-	state, err := newState(config)
+	state, err := readState(config)
 	if err != nil {
 		notifyError(config, err)
 	}
 
-	state = execute(config, state)
+	state = execute(state, config)
 
 	if err := state.persist(); err != nil {
 		notifyError(config, err)

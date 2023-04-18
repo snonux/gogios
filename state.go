@@ -10,8 +10,8 @@ import (
 )
 
 type checkState struct {
-	Status     int
-	PrevStatus int
+	Status     nagiosCode
+	PrevStatus nagiosCode
 	output     string
 }
 
@@ -20,7 +20,7 @@ type state struct {
 	checks    map[string]checkState
 }
 
-func newState(config config) (state, error) {
+func readState(config config) (state, error) {
 	s := state{
 		stateFile: fmt.Sprintf("%s/state.json", config.StateDir),
 		checks:    make(map[string]checkState),
@@ -85,7 +85,7 @@ func (s state) report() (string, string, bool) {
 	var sb strings.Builder
 	var changed bool
 
-	f := func(filter func(i int) bool) int {
+	f := func(filter func(n nagiosCode) bool) int {
 		var count int
 		for name, checkState := range s.checks {
 			if !filter(checkState.Status) {
@@ -94,12 +94,12 @@ func (s state) report() (string, string, bool) {
 			count++
 
 			if checkState.Status != checkState.PrevStatus {
-				sb.WriteString(codeToString(checkState.PrevStatus))
+				sb.WriteString(nagiosCode(checkState.PrevStatus).Str())
 				sb.WriteString("->")
 				changed = true
 			}
 
-			sb.WriteString(codeToString(checkState.Status))
+			sb.WriteString(nagiosCode(checkState.Status).Str())
 			sb.WriteString(": ")
 			sb.WriteString(name)
 			sb.WriteString(" ==>> ")
@@ -112,22 +112,22 @@ func (s state) report() (string, string, bool) {
 
 	sb.WriteString("This is the recent Gogios report!\n\n")
 
-	numCriticals := f(func(i int) bool { return i == 2 })
+	numCriticals := f(func(n nagiosCode) bool { return n == 2 })
 	if numCriticals > 0 {
 		sb.WriteString("\n")
 	}
 
-	numWarnings := f(func(i int) bool { return i == 1 })
+	numWarnings := f(func(n nagiosCode) bool { return n == 1 })
 	if numWarnings > 0 {
 		sb.WriteString("\n")
 	}
 
-	numUnknowns := f(func(i int) bool { return i > 2 })
+	numUnknowns := f(func(n nagiosCode) bool { return n > 2 })
 	if numUnknowns > 0 {
 		sb.WriteString("\n")
 	}
 
-	numOks := f(func(i int) bool { return i == 0 })
+	numOks := f(func(n nagiosCode) bool { return n == 0 })
 	if numOks > 0 {
 		sb.WriteString("\n")
 	}

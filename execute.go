@@ -7,58 +7,53 @@ import (
 	"time"
 )
 
-type executionUnit struct {
-	name  string
-	check check
-}
-
-func execute(config config, state state) state {
+func execute(state state, config config) state {
 	limiterCh := make(chan struct{}, config.CheckConcurrency)
-	executionCh := make(chan executionUnit)
-	resultCh := make(chan checkResult)
+	inputCh := make(chan namedCheck)
+	outputCh := make(chan checkResult)
 
 	go func() {
 		for name, check := range config.Checks {
-			executionCh <- executionUnit{name, check}
+			inputCh <- namedCheck{check, name}
 		}
-		close(executionCh)
+		close(inputCh)
 	}()
 
-	var resultWg sync.WaitGroup
-	resultWg.Add(1)
+	var outputWg sync.WaitGroup
+	outputWg.Add(1)
 
 	go func() {
-		for checkResult := range resultCh {
+		for checkResult := range outputCh {
 			state.update(checkResult)
 		}
-		resultWg.Done()
+		outputWg.Done()
 	}()
 
-	var executionWg sync.WaitGroup
-	executionWg.Add(len(config.Checks))
+	var inputWg sync.WaitGroup
+	inputWg.Add(len(config.Checks))
 
-	for executionUnit := range executionCh {
-		go func(name string, check check) {
+	for check := range inputCh {
+		go func(check namedCheck) {
 			limiterCh <- struct{}{}
 			defer func() {
 				<-limiterCh
-				executionWg.Done()
+				inputWg.Done()
 			}()
 
 			ctx, cancel := context.WithTimeout(context.Background(),
 				time.Duration(config.CheckTimeoutS)*time.Second)
 			defer cancel()
 
-			resultCh <- check.execute(ctx, name)
-		}(executionUnit.name, executionUnit.check)
+			outputCh <- check.execute(ctx)
+		}(check)
 	}
 
-	executionWg.Wait()
+	inputWg.Wait()
 	log.Println("All checks completed!")
-	close(resultCh)
+	close(outputCh)
 
-	resultWg.Wait()
-	log.Println("All results collected!")
+	outputWg.Wait()
+	log.Println("All outputs collected!")
 
 	return state
 }

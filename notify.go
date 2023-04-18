@@ -23,6 +23,7 @@ func notify(config config, subject, body string) error {
 
 	message := header + "\r\n" + body
 	log.Println("Using SMTP server", config.SMTPServer)
+
 	return smtp.SendMail(config.SMTPServer, nil, config.EmailFrom,
 		[]string{config.EmailTo}, []byte(message))
 }

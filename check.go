@@ -12,10 +12,15 @@ type check struct {
 	Args   []string
 }
 
+type namedCheck struct {
+	check
+	name string
+}
+
 type checkResult struct {
 	name   string
 	output string
-	status int
+	status nagiosCode
 }
 
 func (c check) execute(ctx context.Context, name string) checkResult {
@@ -27,11 +32,7 @@ func (c check) execute(ctx context.Context, name string) checkResult {
 
 	if err := cmd.Run(); err != nil {
 		if ctx.Err() == context.DeadlineExceeded {
-			return checkResult{
-				name:   name,
-				output: "Check command timed out",
-				status: critical,
-			}
+			return checkResult{name, "Check command timed out", critical}
 		}
 	}
 
@@ -39,9 +40,9 @@ func (c check) execute(ctx context.Context, name string) checkResult {
 	parts := strings.Split(bytes.String(), "|")
 	output := strings.TrimSpace(parts[0])
 
-	return checkResult{
-		name:   name,
-		output: output,
-		status: cmd.ProcessState.ExitCode(),
-	}
+	return checkResult{name, output, nagiosCode(cmd.ProcessState.ExitCode())}
+}
+
+func (c namedCheck) execute(ctx context.Context) checkResult {
+	return c.check.execute(ctx, c.name)
 }
