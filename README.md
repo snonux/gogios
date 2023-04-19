@@ -1,10 +1,12 @@
 # Gogios
 
-Gogios is a minimalistic and easy-to-use monitoring tool written in Golang, compatible with the Nagios Check API. It is designed to periodically execute checks and send monitoring status via email. With its simple configuration, Gogios is a perfect solution for those looking for a lightweight monitoring solution that integrates well with the Nagios ecosystem.
+Gogios is a minimalistic and easy-to-use monitoring tool written in Golang, compatible with the Nagios Check Plugins. It is designed to periodically execute checks and send monitoring status via email. With its simple configuration, Gogios is a perfect solution for those looking for a lightweight monitoring solution that integrates well with the Nagios ecosystem.
 
 Gogios is a lightweight and minimalistic monitoring tool that is not designed for large-scale monitoring. It is ideal for monitoring self-hosted servers in a very small scale, such as only a handful of servers and/or virtual machines. If you have a limited number of resources to monitor and require a simple yet effective solution, Gogios is a great choice. However, for larger environments with more complex monitoring requirements, it might be necessary to consider other monitoring solutions that are better suited for managing and scaling with increased monitoring demands.
 
 ## Installation
+
+### Compiling and installing Gogios
 
 To compile and install Gogios on OpenBSD, follow these steps:
 
@@ -16,7 +18,9 @@ doas cp gogios /usr/local/bin/gogios
 doas chmod 755 /usr/local/bin/gogios
 ```
 
-Please note, depending on your operating system (e.g. Linux based), you may want to use `sudo` instead of `doas` and also change `/usr/local/bin` to a different path. If you want to compile Gogios for OpenBSD on a Linux system without installing the Go compiler on OpenBSD, you can use cross-compilation. Follow these steps:
+Please note, depending on your operating system (e.g. Linux based), you may want to use `sudo` instead of `doas` and also change `/usr/local/bin` to a different path. I won't mention this from now anymore: On systems other than OpenBSD you may have to always replace `doas` with the `sudo` command.
+
+If you want to compile Gogios for OpenBSD on a Linux system without installing the Go compiler on OpenBSD, you can use cross-compilation. Follow these steps:
 
 ```
 export GOOS=openbsd
@@ -25,6 +29,35 @@ go build -o gogios cmd/gogios/main.go
 ```
 
 On your OpenBSD system, copy the binary to `/usr/local/bin` and set the correct permissions as described in the previous section. I personally use Rexify, the friendly configuration management system, to automate the installation.
+
+### Setting up user, group and directories
+
+It is best to create a dedicated system user and group for Gogios to ensure proper isolation and security. The process of creating a user and group may vary depending on the operating system you're using. Here are the steps to create the `gogios` user and group under OpenBSD:
+
+```
+doas groupadd gogios
+doas useradd -g gogios -d /nonexistent -s /sbin/nologin -r gogios
+```
+
+Please note that the process of creating a user and group might differ depending on the operating system you are using. For other operating systems, consult their documentation for creating system users and groups.
+
+To set up the `StateDir` correctly with the correct permissions, follow these steps: 
+
+```
+doas mkdir -p /var/run/gogios
+doas chown gogios:gogios /var/run/gogios
+doas chmod 750 /var/run/gogios
+```
+
+### Installing monitoring plugins
+
+Gogios relies on external Nagios or Icinga monitoring plugin scripts. On OpenBSD, you can install the `monitoring-plugins` package to use with Gogios. The monitoring-plugins package is a collection of monitoring plugins, similar to Nagios plugins, that can be used to monitor various services and resources:
+
+```
+doas pkg_add monitoring-plugins
+```
+
+Once the installation is complete, you can find the monitoring plugins in the `/usr/local/libexec/nagios` directory, which then can be configured to be used in `gogios.json`.
 
 ## Configuration
 
@@ -40,9 +73,9 @@ echo "This is a test email from OpenBSD." | mail -s "Test Email" your-email@exam
 
 Check the recipient's inbox to confirm the delivery of the test email. If the email is delivered successfully, it indicates that your email server is properly configured and functioning. Please check your MTA logs in case of issues.
 
-### Gogios config
+### Configuring Gogios
 
-To configure Gogios, create a JSON configuration file (e.g., /etc/gogios.json). Here's a sample configuration:
+To configure Gogios, create a JSON configuration file (e.g., `/etc/gogios.json`). Here's a sample configuration:
 
 ```
 {
@@ -75,26 +108,7 @@ Adjust the configuration file according to your needs, specifying the checks you
 
 The `state.json` file mentioned above keeps track of the monitoring state and check results between Gogios runs, enabling Gogios to only send email notifications when there are changes in the check status.
 
-## Setting up user, group and directories
-
-It is best to create a dedicated system user and group for Gogios to ensure proper isolation and security. The process of creating a user and group may vary depending on the operating system you're using. Here are the steps to create the `gogios` user and group under OpenBSD:
-
-```
-sudo groupadd gogios
-sudo useradd -g gogios -d /nonexistent -s /sbin/nologin -r gogios
-```
-
-Please note that the process of creating a user and group might differ depending on the operating system you are using. For other operating systems, consult their documentation for creating system users and groups.
-
-To set up the `StateDir` correctly with the correct permissions, follow these steps: 
-
-```
-sudo mkdir -p /var/run/gogios
-sudo chown gogios:gogios /var/run/gogios
-sudo chmod 750 /var/run/gogios
-```
-
-## Running Gogios via CRON
+## Running Gogios
 
 Now it is time to give it a first run. On OpenBSD, do:
 
@@ -102,23 +116,17 @@ Now it is time to give it a first run. On OpenBSD, do:
 doas -u gogios /usr/local/bin/gogios -cfg /etc/gogios.json
 ```
 
-and on Linux based systems, you likely would need to run:
+To run Gogios via CRON on OpenBSD as the `gogios` user and check all services once per minute, follow these steps:
 
-```
-sudo -u gogios /usr/local/bin/gogios -cfg /etc/gogios.json
-```
-
-To run Gogios via CRON as the `gogios` user and check all services once per minute, follow these steps:
-
-Type `sudo crontab -e -u gogios` and press Enter to open the crontab file for the `gogios` user for editing and add the following line to the crontab file:
+Type `doas crontab -e -u gogios` and press Enter to open the crontab file for the `gogios` user for editing and add the following line to the crontab file:
 
 ```
 * * * * * /usr/local/bin/gogios -cfg /etc/gogios.json
 ```
 
-Replace `/usr/local/bin/gogios` with the actual path to the Gogios binary on your system. Gogios is now configured to run every minute via CRON as the `gogios` user, and it will execute the checks and send monitoring status via email according to your configuration. By running Gogios under the gogios user's crontab, you further enhance the isolation and security of the monitoring setup.
+Gogios is now configured to run every minute via CRON as the `gogios` user, and it will execute the checks and send monitoring status via email according to your configuration. By running Gogios under the gogios user's crontab, you further enhance the isolation and security of the monitoring setup.
 
-## High-availability
+### High-availability
 
 To create a high-availability Gogios setup, you can install Gogios on two servers that will monitor each other using the NRPE (Nagios Remote Plugin Executor) plugin. By running Gogios in alternate cron intervals on both servers, you can ensure that even if one server goes down, the other will continue monitoring your infrastructure and sending notifications.
 
