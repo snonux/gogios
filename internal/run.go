@@ -1,6 +1,8 @@
 package internal
 
-func Run(configFile string) {
+import "context"
+
+func Run(cts context.Context, configFile string) {
 	config, err := newConfig(configFile)
 	if err != nil {
 		panic(err)
@@ -11,7 +13,7 @@ func Run(configFile string) {
 		notifyError(config, err)
 	}
 
-	state = execute(state, config)
+	state = execute(ctx, state, config)
 
 	if err := state.persist(); err != nil {
 		notifyError(config, err)

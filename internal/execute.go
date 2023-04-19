@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-func execute(state state, config config) state {
+func execute(globalCtx context.Context, state state, config config) state {
 	limiterCh := make(chan struct{}, config.CheckConcurrency)
 	inputCh := make(chan namedCheck)
 	outputCh := make(chan checkResult)
@@ -40,7 +40,7 @@ func execute(state state, config config) state {
 				inputWg.Done()
 			}()
 
-			ctx, cancel := context.WithTimeout(context.Background(),
+			ctx, cancel := context.WithTimeout(globalCtx,
 				time.Duration(config.CheckTimeoutS)*time.Second)
 			defer cancel()
 
