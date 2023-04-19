@@ -35,19 +35,14 @@ On your OpenBSD system, copy the binary to `/usr/local/bin` and set the correct 
 It is best to create a dedicated system user and group for Gogios to ensure proper isolation and security. The process of creating a user and group may vary depending on the operating system you're using. Here are the steps to create the `gogios` user and group under OpenBSD:
 
 ```
-doas groupadd gogios
-doas useradd -g gogios -d /nonexistent -s /sbin/nologin -r gogios
+doas adduser -group _gogios -batch _gogios
+doas usermod -d /var/run/gogios _gogios
+doas mkdir -p /var/run/gogios
+doas chown _gogios:_gogios /var/run/gogios
+doas chmod 750 /var/run/gogios
 ```
 
 Please note that the process of creating a user and group might differ depending on the operating system you are using. For other operating systems, consult their documentation for creating system users and groups.
-
-To set up the `StateDir` correctly with the correct permissions, follow these steps: 
-
-```
-doas mkdir -p /var/run/gogios
-doas chown gogios:gogios /var/run/gogios
-doas chmod 750 /var/run/gogios
-```
 
 ### Installing monitoring plugins
 
@@ -113,18 +108,18 @@ The `state.json` file mentioned above keeps track of the monitoring state and ch
 Now it is time to give it a first run. On OpenBSD, do:
 
 ```
-doas -u gogios /usr/local/bin/gogios -cfg /etc/gogios.json
+doas -u _gogios /usr/local/bin/gogios -cfg /etc/gogios.json
 ```
 
 To run Gogios via CRON on OpenBSD as the `gogios` user and check all services once per minute, follow these steps:
 
-Type `doas crontab -e -u gogios` and press Enter to open the crontab file for the `gogios` user for editing and add the following line to the crontab file:
+Type `doas crontab -e -u _gogios` and press Enter to open the crontab file for the `_gogios` user for editing and add the following line to the crontab file:
 
 ```
 * * * * * /usr/local/bin/gogios -cfg /etc/gogios.json
 ```
 
-Gogios is now configured to run every minute via CRON as the `gogios` user, and it will execute the checks and send monitoring status via email according to your configuration. By running Gogios under the gogios user's crontab, you further enhance the isolation and security of the monitoring setup.
+Gogios is now configured to run every minute via CRON as the `_gogios` user, and it will execute the checks and send monitoring status via email according to your configuration. By running Gogios under the gogios user's crontab, you further enhance the isolation and security of the monitoring setup.
 
 ### High-availability
 
