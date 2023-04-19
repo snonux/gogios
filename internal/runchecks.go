@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-func execute(globalCtx context.Context, state state, config config) state {
+func runChecks(globalCtx context.Context, state state, config config) state {
 	limiterCh := make(chan struct{}, config.CheckConcurrency)
 	inputCh := make(chan namedCheck)
 	outputCh := make(chan checkResult)
@@ -44,7 +44,7 @@ func execute(globalCtx context.Context, state state, config config) state {
 				time.Duration(config.CheckTimeoutS)*time.Second)
 			defer cancel()
 
-			outputCh <- check.execute(ctx)
+			outputCh <- check.run(ctx)
 		}(check)
 	}
 

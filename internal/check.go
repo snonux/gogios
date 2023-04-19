@@ -23,7 +23,7 @@ type checkResult struct {
 	status nagiosCode
 }
 
-func (c check) execute(ctx context.Context, name string) checkResult {
+func (c check) run(ctx context.Context, name string) checkResult {
 	cmd := exec.CommandContext(ctx, c.Plugin, c.Args...)
 
 	var bytes bytes.Buffer
@@ -43,6 +43,6 @@ func (c check) execute(ctx context.Context, name string) checkResult {
 	return checkResult{name, output, nagiosCode(cmd.ProcessState.ExitCode())}
 }
 
-func (c namedCheck) execute(ctx context.Context) checkResult {
-	return c.check.execute(ctx, c.name)
+func (c namedCheck) run(ctx context.Context) checkResult {
+	return c.check.run(ctx, c.name)
 }
