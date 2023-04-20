@@ -11,8 +11,8 @@ import (
 type config struct {
 	EmailTo          string
 	EmailFrom        string
-	SMTPServer       string `json:"omitempty"`
-	StateDir         string `json:"omitempty"`
+	SMTPServer       string `json:"SMTPServer,omitempty"`
+	StateDir         string `json:"StateDir,omitempty"`
 	CheckTimeoutS    int
 	CheckConcurrency int
 	Checks           map[string]check
