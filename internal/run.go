@@ -2,7 +2,7 @@ package internal
 
 import "context"
 
-func Run(ctx context.Context, configFile string) {
+func Run(ctx context.Context, configFile string, renotify bool) {
 	config, err := newConfig(configFile)
 	if err != nil {
 		panic(err)
@@ -19,7 +19,7 @@ func Run(ctx context.Context, configFile string) {
 		notifyError(config, err)
 	}
 
-	if subject, body, doNotify := state.report(); doNotify {
+	if subject, body, doNotify := state.report(renotify); doNotify {
 		notify(config, subject, body)
 	}
 }
