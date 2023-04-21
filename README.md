@@ -17,8 +17,7 @@ go build -o gogios cmd/gogios/main.go
 doas cp gogios /usr/local/bin/gogios
 doas chmod 755 /usr/local/bin/gogios
 ```
-
-Please note, depending on your operating system (e.g. Linux based), you may want to use `sudo` instead of `doas` and also change `/usr/local/bin` to a different path. I won't mention this from now anymore: On systems other than OpenBSD you may have to always replace `doas` with the `sudo` command.
+This README is primarily written for OpenBSD, but it should be easy to apply the corresponding steps to any other Unix like (e.g. Linux based ones) operating sytems. On systems other than OpenBSD you may always have to replace `doas` with the `sudo` command and replace the `/usr/local/bin` path with `/usr/bin`.
 
 If you want to compile Gogios for OpenBSD on a Linux system without installing the Go compiler on OpenBSD, you can use cross-compilation. Follow these steps:
 
@@ -28,11 +27,11 @@ export GOARCH=amd64
 go build -o gogios cmd/gogios/main.go
 ```
 
-On your OpenBSD system, copy the binary to `/usr/local/bin` and set the correct permissions as described in the previous section. I personally use Rexify, the friendly configuration management system, to automate the installation.
+On your OpenBSD system, copy the binary to `/usr/local/bin` and set the correct permissions as described in the previous section. All steps described here you could automate with your configuration management system of choice. I personally use Rexify, the friendly configuration management system, to automate the installation.
 
 ### Setting up user, group and directories
 
-It is best to create a dedicated system user and group for Gogios to ensure proper isolation and security. The process of creating a user and group may vary depending on the operating system you're using. Here are the steps to create the `gogios` user and group under OpenBSD:
+It is best to create a dedicated system user and group for Gogios to ensure proper isolation and security. The process of creating a user and group may vary depending on the operating system you're using. Here are the steps to create the `_gogios` user and group under OpenBSD:
 
 ```
 doas adduser -group _gogios -batch _gogios
@@ -63,7 +62,7 @@ Gogios requires a local Mail Transfer Agent (MTA) such as Postfix or OpenBSD SMT
 To send an email via the command line on OpenBSD, you can use the mail command. Here's an example of how to send a test email to ensure that your email server is working correctly:
 
 ```
-echo "This is a test email from OpenBSD." | mail -s "Test Email" your-email@example.com
+echo 'This is a test email from OpenBSD.' | mail -s 'Test Email' your-email@example.com
 ```
 
 Check the recipient's inbox to confirm the delivery of the test email. If the email is delivered successfully, it indicates that your email server is properly configured and functioning. Please check your MTA logs in case of issues.
@@ -113,13 +112,14 @@ doas -u _gogios /usr/local/bin/gogios -cfg /etc/gogios.json
 
 To run Gogios via CRON on OpenBSD as the `gogios` user and check all services once per minute, follow these steps:
 
-Type `doas crontab -e -u _gogios` and press Enter to open the crontab file for the `_gogios` user for editing and add the following line to the crontab file:
+Type `doas crontab -e -u _gogios` and press Enter to open the crontab file for the `_gogios` user for editing and add the following lines to the crontab file:
 
 ```
-* * * * * /usr/local/bin/gogios -cfg /etc/gogios.json
+*/5 8-22 * * * /usr/local/bin/gogios -cfg /etc/gogios.json
+0 7 * * * /usr/local/bin/gogios -renotify -cfg /etc/gogios.json
 ```
 
-Gogios is now configured to run every minute via CRON as the `_gogios` user, and it will execute the checks and send monitoring status via email according to your configuration. By running Gogios under the gogios user's crontab, you further enhance the isolation and security of the monitoring setup.
+Gogios is now configured to run every five minutes from 8am to 10pm via CRON as the `_gogios` user. It will execute the checks and send monitoring status whenever a check status changes via email according to your configuration. Also, Gogios will run once 7am every morning and re-notify all unhandled alerts as a reminder.
 
 ### High-availability
 
@@ -128,7 +128,7 @@ To create a high-availability Gogios setup, you can install Gogios on two server
 * Install Gogios on both servers following the compilation and installation instructions provided earlier.
 * Install the NRPE server and plugin on both servers. This plugin allows you to execute Nagios check scripts on remote hosts.
 * Configure Gogios on both servers to monitor each other using the NRPE plugin. Add a check to the Gogios configuration file (`/etc/gogios.json`) on both servers that uses the NRPE plugin to execute a check script on the other server. For example, if you have Server A and Server B, the configuration on Server A should include a check for Server B, and vice versa.
-* Set up alternate cron intervals on both servers. Configure the cron job on Server A to run Gogios at odd minutes (e.g., 1, 3, 5, ...), and on Server B to run at even minutes (e.g., 0, 2, 4, ...). This will ensure that if one server goes down, the other server will continue monitoring and sending notifications.
+* Set up alternate cron intervals on both servers. Configure the cron job on Server A to run Gogios at minutes 0, 10, 20, ..., and on Server B to run at minutes 5, 15, 25, ... This will ensure that if one server goes down, the other server will continue monitoring and sending notifications.
 
 # But why?
 
