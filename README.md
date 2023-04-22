@@ -6,7 +6,7 @@ Gogios is a lightweight and minimalistic monitoring tool that is not designed fo
 
 ## Example alert
 
-This is an example alert report received via E-Mail:
+This is an example alert report received via E-Mail. Whereas, `[C:2 W:0 U:0 OK:51]` means, that we've got 2 alerts in status critical, 0 warnings, 0 unknowns and 51 OKs.
 
 ```
 Subject: GOGIOS Report [C:2 W:0 U:0 OK:51]
