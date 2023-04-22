@@ -105,25 +105,25 @@ func (s state) report(renotify bool) (string, string, bool) {
 }
 
 func (s state) reportChanged(sb *strings.Builder) (changed bool) {
-	if 0 < s.reportBy(sb, func(cs checkState) bool {
+	if 0 < s.reportBy(sb, true, func(cs checkState) bool {
 		return cs.Status == critical && cs.changed()
 	}) {
 		changed = true
 	}
 
-	if 0 < s.reportBy(sb, func(cs checkState) bool {
+	if 0 < s.reportBy(sb, true, func(cs checkState) bool {
 		return cs.Status == warning && cs.changed()
 	}) {
 		changed = true
 	}
 
-	if 0 < s.reportBy(sb, func(cs checkState) bool {
+	if 0 < s.reportBy(sb, true, func(cs checkState) bool {
 		return cs.Status == unknown && cs.changed()
 	}) {
 		changed = true
 	}
 
-	if 0 < s.reportBy(sb, func(cs checkState) bool {
+	if 0 < s.reportBy(sb, true, func(cs checkState) bool {
 		return cs.Status == ok && cs.changed()
 	}) {
 		changed = true
@@ -135,15 +135,15 @@ func (s state) reportChanged(sb *strings.Builder) (changed bool) {
 func (s state) reportUnhandled(sb *strings.Builder) (numCriticals, numWarnings,
 	numUnknown, numOK int) {
 
-	numCriticals = s.reportBy(sb, func(cs checkState) bool { return cs.Status == critical })
-	numWarnings = s.reportBy(sb, func(cs checkState) bool { return cs.Status == warning })
-	numUnknown = s.reportBy(sb, func(cs checkState) bool { return cs.Status == unknown })
+	numCriticals = s.reportBy(sb, false, func(cs checkState) bool { return cs.Status == critical })
+	numWarnings = s.reportBy(sb, false, func(cs checkState) bool { return cs.Status == warning })
+	numUnknown = s.reportBy(sb, false, func(cs checkState) bool { return cs.Status == unknown })
 	numOK = s.countBy(func(cs checkState) bool { return cs.Status == ok })
 
 	return
 }
 
-func (s state) reportBy(sb *strings.Builder,
+func (s state) reportBy(sb *strings.Builder, showStatusChange bool,
 	filter func(cs checkState) bool) (count int) {
 
 	for name, cs := range s.checks {
@@ -152,7 +152,7 @@ func (s state) reportBy(sb *strings.Builder,
 		}
 		count++
 
-		if cs.changed() {
+		if showStatusChange && cs.changed() {
 			sb.WriteString(nagiosCode(cs.PrevStatus).Str())
 			sb.WriteString("->")
 		}
