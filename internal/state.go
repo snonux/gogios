@@ -92,16 +92,23 @@ func (s state) report(renotify bool) (string, string, bool) {
 
 	sb.WriteString("# Alerts with status changed:\n\n")
 	changed := s.reportChanged(&sb)
+	if !changed {
+		sb.WriteString("There were no status changes...\n\n")
+	}
 
 	sb.WriteString("# Unhandled alerts:\n\n")
 	numCriticals, numWarnings, numUnknown, numOK := s.reportUnhandled(&sb)
+	hasUnhandled := (numCriticals + numWarnings + numUnknown) > 0
+	if !hasUnhandled {
+		sb.WriteString("There are no unhandled alerts...\n\n")
+	}
 
 	sb.WriteString("Have a nice day!\n")
 
 	subject := fmt.Sprintf("GOGIOS Report [C:%d W:%d U:%d OK:%d]",
 		numCriticals, numWarnings, numUnknown, numOK)
 
-	return subject, sb.String(), changed || (renotify && (numCriticals+numWarnings+numUnknown) > 0)
+	return subject, sb.String(), changed || (renotify && hasUnhandled)
 }
 
 func (s state) reportChanged(sb *strings.Builder) (changed bool) {
@@ -160,7 +167,7 @@ func (s state) reportBy(sb *strings.Builder, showStatusChange bool,
 		sb.WriteString(nagiosCode(cs.Status).Str())
 		sb.WriteString(": ")
 		sb.WriteString(name)
-		sb.WriteString(" ==>> ")
+		sb.WriteString(": ")
 		sb.WriteString(cs.output)
 		sb.WriteString("\n")
 	}

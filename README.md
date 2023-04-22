@@ -15,13 +15,13 @@ This is the recent Gogios report!
 
 # Alerts with status changed:
 
-OK->CRITICAL: Check ICMP4 vulcan.buetow.org ==>> Check command timed out
-OK->CRITICAL: Check ICMP6 vulcan.buetow.org ==>> Check command timed out
+OK->CRITICAL: Check ICMP4 vulcan.buetow.org: Check command timed out
+OK->CRITICAL: Check ICMP6 vulcan.buetow.org: Check command timed out
 
 # Unhandled alerts:
 
-CRITICAL: Check ICMP4 vulcan.buetow.org ==>> Check command timed out
-CRITICAL: Check ICMP6 vulcan.buetow.org ==>> Check command timed out
+CRITICAL: Check ICMP4 vulcan.buetow.org: Check command timed out
+CRITICAL: Check ICMP6 vulcan.buetow.org: Check command timed out
 
 Have a nice day!
 ```
