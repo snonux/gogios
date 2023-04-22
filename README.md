@@ -155,7 +155,8 @@ To create a high-availability Gogios setup, you can install Gogios on two server
 * Install Gogios on both servers following the compilation and installation instructions provided earlier.
 * Install the NRPE server (out of scope for this document) and plugin on both servers. This plugin allows you to execute Nagios check scripts on remote hosts.
 * Configure Gogios on both servers to monitor each other using the NRPE plugin. Add a check to the Gogios configuration file (`/etc/gogios.json`) on both servers that uses the NRPE plugin to execute a check script on the other server. For example, if you have Server A and Server B, the configuration on Server A should include a check for Server B, and vice versa.
-* Set up alternate cron intervals on both servers. Configure the cron job on Server A to run Gogios at minutes 0, 10, 20, ..., and on Server B to run at minutes 5, 15, 25, ... This will ensure that if one server goes down, the other server will continue monitoring and sending notifications.
+* Set up alternate cron intervals on both servers. Configure the cron job on Server A to run Gogios at minutes 0, 10, 20, ..., and on Server B to run at minutes 5, 15, 25, ... This will ensure that if one server goes down, the other server will continue monitoring and sending notifications. 
+* Gogios doesn't support clustering. So it means, when both servers are up, unhandled alerts will be notified via E-Mail twice; From each server once. That's the trade-off for simplicity.
 
 # But why?
 
