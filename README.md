@@ -71,6 +71,7 @@ Gogios relies on external Nagios or Icinga monitoring plugin scripts. On OpenBSD
 
 ```
 doas pkg_add monitoring-plugins
+doas pkg_add nrpe # If you want to execute checks remotely via NRPE.
 ```
 
 Once the installation is complete, you can find the monitoring plugins in the `/usr/local/libexec/nagios` directory, which then can be configured to be used in `gogios.json`.
@@ -109,6 +110,10 @@ To configure Gogios, create a JSON configuration file (e.g., `/etc/gogios.json`)
       "Plugin": "/usr/local/libexec/nagios/check_http",
       "Args": ["www.foo.zone", "-6"]
     }
+    "Check NRPE Disk Usage foo.zone": {
+      "Plugin": "/usr/local/libexec/nagios/check_nrpe",
+      "Args": ["-H", "foo.zone", "-c", "check_disk", "-p", "5666", "-4"]
+    }
   }
 }
 ```
@@ -120,7 +125,7 @@ To configure Gogios, create a JSON configuration file (e.g., `/etc/gogios.json`)
 * `StateDir`: Specifies the directory where Gogios stores its persistent state in a `state.json` file. 
 * `Checks`: Defines a list of checks to be performed, with each check having a unique name, plugin path, and arguments.
 
-Adjust the configuration file according to your needs, specifying the checks you want Gogios to perform.
+Adjust the configuration file according to your needs, specifying the checks you want Gogios to perform. For remote checks, use the `check_nrpe` plugin. You also need to have the NRPE server set up correctly on the target host (out of scope of this document).
 
 The `state.json` file mentioned above keeps track of the monitoring state and check results between Gogios runs, enabling Gogios to only send email notifications when there are changes in the check status.
 
@@ -148,7 +153,7 @@ Gogios is now configured to run every five minutes from 8am to 10pm via CRON as 
 To create a high-availability Gogios setup, you can install Gogios on two servers that will monitor each other using the NRPE (Nagios Remote Plugin Executor) plugin. By running Gogios in alternate cron intervals on both servers, you can ensure that even if one server goes down, the other will continue monitoring your infrastructure and sending notifications.
 
 * Install Gogios on both servers following the compilation and installation instructions provided earlier.
-* Install the NRPE server and plugin on both servers. This plugin allows you to execute Nagios check scripts on remote hosts.
+* Install the NRPE server (out of scope of this document) and plugin on both servers. This plugin allows you to execute Nagios check scripts on remote hosts.
 * Configure Gogios on both servers to monitor each other using the NRPE plugin. Add a check to the Gogios configuration file (`/etc/gogios.json`) on both servers that uses the NRPE plugin to execute a check script on the other server. For example, if you have Server A and Server B, the configuration on Server A should include a check for Server B, and vice versa.
 * Set up alternate cron intervals on both servers. Configure the cron job on Server A to run Gogios at minutes 0, 10, 20, ..., and on Server B to run at minutes 5, 15, 25, ... This will ensure that if one server goes down, the other server will continue monitoring and sending notifications.
 
