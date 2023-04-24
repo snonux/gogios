@@ -11,6 +11,7 @@ func runChecks(globalCtx context.Context, state state, config config) state {
 	limiterCh := make(chan struct{}, config.CheckConcurrency)
 	inputCh := make(chan namedCheck)
 	outputCh := make(chan checkResult)
+	deps := newDependency(config)
 
 	go func() {
 		for name, check := range config.Checks {
@@ -34,17 +35,30 @@ func runChecks(globalCtx context.Context, state state, config config) state {
 
 	for check := range inputCh {
 		go func(check namedCheck) {
+			defer inputWg.Done()
+
+			if err := deps.wait(globalCtx, check.DependsOn); err != nil {
+				deps.notOk(check.name)
+				outputCh <- check.skip(err.Error())
+				return
+			}
+
 			limiterCh <- struct{}{}
-			defer func() {
-				<-limiterCh
-				inputWg.Done()
-			}()
+			defer func() { <-limiterCh }()
 
 			ctx, cancel := context.WithTimeout(globalCtx,
 				time.Duration(config.CheckTimeoutS)*time.Second)
 			defer cancel()
 
-			outputCh <- check.run(ctx)
+			checkResult := check.run(ctx)
+
+			if checkResult.status == critical {
+				deps.notOk(check.name)
+			} else {
+				deps.ok(check.name)
+			}
+
+			outputCh <- checkResult
 		}(check)
 	}
 

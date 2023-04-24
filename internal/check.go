@@ -8,8 +8,9 @@ import (
 )
 
 type check struct {
-	Plugin string
-	Args   []string
+	Plugin    string
+	Args      []string
+	DependsOn []string `json:"DependsOn,omitempty"`
 }
 
 type namedCheck struct {
@@ -43,6 +44,14 @@ func (c check) run(ctx context.Context, name string) checkResult {
 	return checkResult{name, output, nagiosCode(cmd.ProcessState.ExitCode())}
 }
 
+func (c check) skip(name, output string) checkResult {
+	return checkResult{name, output, unknown}
+}
+
 func (c namedCheck) run(ctx context.Context) checkResult {
 	return c.check.run(ctx, c.name)
+}
+
+func (c namedCheck) skip(output string) checkResult {
+	return c.check.skip(c.name, output)
 }

@@ -102,13 +102,23 @@ To configure Gogios, create a JSON configuration file (e.g., `/etc/gogios.json`)
   "CheckConcurrency": 2,
   "StateDir": "/var/run/gogios",
   "Checks": {
+    "Check ICMP4 www.foo.zone": {
+      "Plugin": "/usr/local/libexec/nagios/check_ping",
+      "Args": [ "-H", "www.foo.zone", "-4", "-w", "50,10%", "-c", "100,15%" ]
+    },
+    "Check ICMP6 www.foo.zone": {
+      "Plugin": "/usr/local/libexec/nagios/check_ping",
+      "Args": [ "-H", "www.foo.zone", "-6", "-w", "50,10%", "-c", "100,15%" ]
+    },
     "www.foo.zone HTTP IPv4": {
       "Plugin": "/usr/local/libexec/nagios/check_http",
-      "Args": ["www.foo.zone", "-4"]
+      "Args": ["www.foo.zone", "-4"],
+      "DependsOn": ["Check ICMP4 www.foo.zone"]
     },
     "www.foo.zone HTTP IPv6": {
       "Plugin": "/usr/local/libexec/nagios/check_http",
-      "Args": ["www.foo.zone", "-6"]
+      "Args": ["www.foo.zone", "-6"],
+      "DependsOn": ["Check ICMP6 www.foo.zone"]
     }
     "Check NRPE Disk Usage foo.zone": {
       "Plugin": "/usr/local/libexec/nagios/check_nrpe",
@@ -125,7 +135,11 @@ To configure Gogios, create a JSON configuration file (e.g., `/etc/gogios.json`)
 * `StateDir`: Specifies the directory where Gogios stores its persistent state in a `state.json` file. 
 * `Checks`: Defines a list of checks to be performed, with each check having a unique name, plugin path, and arguments.
 
-Adjust the configuration file according to your needs, specifying the checks you want Gogios to perform. For remote checks, use the `check_nrpe` plugin. You also need to have the NRPE server set up correctly on the target host (out of scope for this document).
+Adjust the configuration file according to your needs, specifying the checks you want Gogios to perform.
+
+If you want to execute checks only when another check succeeded (status OK), then use `DependsOn`. In the example above the HTTP checks won't get executed when the hosts aren't pingable. They will show up as `UNKNOWN` in the report.
+
+For remote checks, use the `check_nrpe` plugin. You also need to have the NRPE server set up correctly on the target host (out of scope for this document).
 
 The `state.json` file mentioned above keeps track of the monitoring state and check results between Gogios runs, enabling Gogios to only send email notifications when there are changes in the check status.
 

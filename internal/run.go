@@ -8,6 +8,10 @@ func Run(ctx context.Context, configFile string, renotify bool) {
 		panic(err)
 	}
 
+	if err := config.sanityCheck(); err != nil {
+		notifyError(config, err)
+	}
+
 	state, err := readState(config)
 	if err != nil {
 		notifyError(config, err)
