@@ -175,7 +175,7 @@ To create a high-availability Gogios setup, you can install Gogios on two server
 
 # But why?
 
-As a Site Reliability Engineer with experience in monitoring solutions like Nagios, Icinga, Prometheus and OpsGenie, these tools often came with many features that I didn't necessarily need. Contact groups, host groups, re-check intervals, check clustering, and the requirement of operating a DBMS and a WebUI added complexity and bloat to my monitoring setup.
+With experience in monitoring solutions like Nagios, Icinga, Prometheus and OpsGenie, I know that these tools often came with many features that I didn't necessarily need for personal use. Contact groups, host groups, re-check intervals, check clustering, and the requirement of operating a DBMS and a WebUI added complexity and bloat to my monitoring setup.
 
 My primary goal was to have a single email address for notifications and a simple mechanism to periodically execute standard Nagios check scripts and notify me of any state changes. I wanted the most minimalistic monitoring solution possible but wasn't satisfied with the available options.
 
