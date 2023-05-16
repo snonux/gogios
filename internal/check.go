@@ -8,9 +8,11 @@ import (
 )
 
 type check struct {
-	Plugin    string
-	Args      []string
-	DependsOn []string `json:"DependsOn,omitempty"`
+	Plugin        string
+	Args          []string
+	DependsOn     []string `json:"DependsOn,omitempty"`
+	Retries       int      `json:"Retries,omitempty"`
+	RetryInterval int      `json:"RetryInterval,omitempty"`
 }
 
 type namedCheck struct {

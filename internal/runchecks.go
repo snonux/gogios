@@ -7,8 +7,8 @@ import (
 	"time"
 )
 
-func runChecks(globalCtx context.Context, state state, config config) state {
-	limiterCh := make(chan struct{}, config.CheckConcurrency)
+func runChecks(ctx context.Context, state state, config config) state {
+	limitCh := make(chan struct{}, config.CheckConcurrency)
 	inputCh := make(chan namedCheck)
 	outputCh := make(chan checkResult)
 	deps := newDependency(config)
@@ -35,30 +35,8 @@ func runChecks(globalCtx context.Context, state state, config config) state {
 
 	for check := range inputCh {
 		go func(check namedCheck) {
-			defer inputWg.Done()
-
-			if err := deps.wait(globalCtx, check.DependsOn); err != nil {
-				deps.notOk(check.name)
-				outputCh <- check.skip(err.Error())
-				return
-			}
-
-			limiterCh <- struct{}{}
-			defer func() { <-limiterCh }()
-
-			ctx, cancel := context.WithTimeout(globalCtx,
-				time.Duration(config.CheckTimeoutS)*time.Second)
-			defer cancel()
-
-			checkResult := check.run(ctx)
-
-			if checkResult.status == critical {
-				deps.notOk(check.name)
-			} else {
-				deps.ok(check.name)
-			}
-
-			outputCh <- checkResult
+			outputCh <- runCheck(ctx, limitCh, deps, check, config, check.Retries)
+			inputWg.Done()
 		}(check)
 	}
 
@@ -70,4 +48,38 @@ func runChecks(globalCtx context.Context, state state, config config) state {
 	log.Println("All outputs collected!")
 
 	return state
+}
+
+func runCheck(ctx context.Context, limitCh chan struct{},
+	deps dependency, check namedCheck, config config, retries int) checkResult {
+
+	if err := deps.wait(ctx, check.DependsOn); err != nil {
+		deps.notOk(check.name)
+		return check.skip(err.Error())
+	}
+
+	limitCh <- struct{}{}
+
+	checkCtx, cancel := context.WithTimeout(ctx,
+		time.Duration(config.CheckTimeoutS)*time.Second)
+	defer cancel()
+
+	checkResult := check.run(checkCtx)
+
+	if checkResult.status != ok && retries > 0 {
+		<-limitCh
+		retryDuration := time.Duration(check.RetryInterval) * time.Second
+		time.Sleep(retryDuration)
+		log.Printf("Retrying %s after %v", check.name, retryDuration)
+		return runCheck(ctx, limitCh, deps, check, config, retries-1)
+	}
+
+	if checkResult.status == critical {
+		deps.notOk(check.name)
+	} else {
+		deps.ok(check.name)
+	}
+
+	<-limitCh
+	return checkResult
 }
