@@ -138,11 +138,13 @@ To configure Gogios, create a JSON configuration file (e.g., `/etc/gogios.json`)
 * `CheckTimeoutS`: Sets the timeout for checks in seconds.
 * `CheckConcurrency`: Determines the number of concurrent checks that can run simultaneously.
 * `StateDir`: Specifies the directory where Gogios stores its persistent state in a `state.json` file. 
-* `Checks`: Defines a list of checks to be performed, each with a unique name, plugin path, and arguments.
+* `Checks`: Defines a list of checks to be performed, each with a unique name, plugin path, and arguments. 
 
 Adjust the configuration file according to your needs, specifying the checks you want Gogios to perform.
 
 If you want to execute checks only when another check succeeded (status OK), use `DependsOn`. In the example above, the HTTP checks won't run when the hosts aren't pingable. They will show up as `UNKNOWN` in the report.
+
+`Retries` and `RetryInterval` are optional check configuration parameters. In case of failure, Gogios will retry `Retries` times each `RetryInterval` seconds.
 
 For remote checks, use the `check_nrpe` plugin. You also need to have the NRPE server set up correctly on the target host (out of scope for this document).
 
