@@ -1,9 +1,8 @@
 # Gogios
 
-Gogios is a minimalistic and easy-to-use monitoring tool written in Go, compatible with the Nagios Check Plugins. It is designed to periodically execute checks and send monitoring status via email.
+![Gogios](gogios-small.png "Gogios")
 
 Gogios is a lightweight and minimalistic monitoring tool not designed for large-scale monitoring. It is ideal for monitoring self-hosted servers on a tiny scale, such as only a handful of servers or virtual machines (e.g. my personal infrastructure). If you have limited resources to monitor and require a simple yet effective solution, Gogios is an excellent choice. However, for larger environments with more complex monitoring requirements, it might be necessary to consider other monitoring solutions better suited for managing and scaling with increased monitoring demands.
-
 
 ## Example alert
 
