@@ -19,45 +19,45 @@ type config struct {
 }
 
 func newConfig(configFile string) (config, error) {
-	var config config
+	var conf config
 
 	file, err := os.Open(configFile)
 	if err != nil {
-		return config, err
+		return conf, err
 	}
 	defer file.Close()
 
 	bytes, err := ioutil.ReadAll(file)
 	if err != nil {
-		return config, err
+		return conf, err
 	}
 
-	err = json.Unmarshal(bytes, &config)
+	err = json.Unmarshal(bytes, &conf)
 	if err != nil {
-		return config, err
+		return conf, err
 	}
 
-	if config.SMTPServer == "" {
+	if conf.SMTPServer == "" {
 		hostname, err := os.Hostname()
 		if err != nil {
 			panic(err)
 		}
-		config.SMTPServer = fmt.Sprintf("%s:25", hostname)
-		log.Println("Set SMTPServer to " + config.SMTPServer)
+		conf.SMTPServer = fmt.Sprintf("%s:25", hostname)
+		log.Println("Set SMTPServer to " + conf.SMTPServer)
 	}
 
-	if config.StateDir == "" {
-		config.StateDir = "."
-		log.Println("Set StateDir to " + config.StateDir)
+	if conf.StateDir == "" {
+		conf.StateDir = "."
+		log.Println("Set StateDir to " + conf.StateDir)
 	}
 
-	return config, nil
+	return conf, nil
 }
 
-func (c config) sanityCheck() error {
-	for name, check := range c.Checks {
+func (conf config) sanityCheck() error {
+	for name, check := range conf.Checks {
 		for _, depName := range check.DependsOn {
-			if _, ok := c.Checks[depName]; !ok {
+			if _, ok := conf.Checks[depName]; !ok {
 				return fmt.Errorf("Check '%s' depends on non existant check '%s'", name, depName)
 			}
 		}

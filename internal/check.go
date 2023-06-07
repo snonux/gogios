@@ -35,7 +35,7 @@ func (c check) run(ctx context.Context, name string) checkResult {
 
 	if err := cmd.Run(); err != nil {
 		if ctx.Err() == context.DeadlineExceeded {
-			return checkResult{name, "Check command timed out", critical}
+			return checkResult{name, "Check command timed out", nagiosCritical}
 		}
 	}
 
@@ -47,7 +47,7 @@ func (c check) run(ctx context.Context, name string) checkResult {
 }
 
 func (c check) skip(name, output string) checkResult {
-	return checkResult{name, output, unknown}
+	return checkResult{name, output, nagiosUnknown}
 }
 
 func (c namedCheck) run(ctx context.Context) checkResult {

@@ -24,9 +24,9 @@ type state struct {
 	checks    map[string]checkState
 }
 
-func readState(config config) (state, error) {
+func readState(conf config) (state, error) {
 	s := state{
-		stateFile: fmt.Sprintf("%s/state.json", config.StateDir),
+		stateFile: fmt.Sprintf("%s/state.json", conf.StateDir),
 		checks:    make(map[string]checkState),
 	}
 
@@ -52,7 +52,7 @@ func readState(config config) (state, error) {
 
 	var obsolete []string
 	for name := range s.checks {
-		if _, ok := config.Checks[name]; !ok {
+		if _, ok := conf.Checks[name]; !ok {
 			obsolete = append(obsolete, name)
 		}
 	}
@@ -66,7 +66,7 @@ func readState(config config) (state, error) {
 }
 
 func (s state) update(result checkResult) {
-	prevStatus := unknown
+	prevStatus := nagiosUnknown
 	prevState, ok := s.checks[result.name]
 	if ok {
 		prevStatus = prevState.Status
@@ -113,25 +113,25 @@ func (s state) report(renotify bool) (string, string, bool) {
 
 func (s state) reportChanged(sb *strings.Builder) (changed bool) {
 	if 0 < s.reportBy(sb, true, func(cs checkState) bool {
-		return cs.Status == critical && cs.changed()
+		return cs.Status == nagiosCritical && cs.changed()
 	}) {
 		changed = true
 	}
 
 	if 0 < s.reportBy(sb, true, func(cs checkState) bool {
-		return cs.Status == warning && cs.changed()
+		return cs.Status == nagiosWarning && cs.changed()
 	}) {
 		changed = true
 	}
 
 	if 0 < s.reportBy(sb, true, func(cs checkState) bool {
-		return cs.Status == unknown && cs.changed()
+		return cs.Status == nagiosUnknown && cs.changed()
 	}) {
 		changed = true
 	}
 
 	if 0 < s.reportBy(sb, true, func(cs checkState) bool {
-		return cs.Status == ok && cs.changed()
+		return cs.Status == nagiosOk && cs.changed()
 	}) {
 		changed = true
 	}
@@ -142,10 +142,21 @@ func (s state) reportChanged(sb *strings.Builder) (changed bool) {
 func (s state) reportUnhandled(sb *strings.Builder) (numCriticals, numWarnings,
 	numUnknown, numOK int) {
 
-	numCriticals = s.reportBy(sb, false, func(cs checkState) bool { return cs.Status == critical })
-	numWarnings = s.reportBy(sb, false, func(cs checkState) bool { return cs.Status == warning })
-	numUnknown = s.reportBy(sb, false, func(cs checkState) bool { return cs.Status == unknown })
-	numOK = s.countBy(func(cs checkState) bool { return cs.Status == ok })
+	numCriticals = s.reportBy(sb, false, func(cs checkState) bool {
+		return cs.Status == nagiosCritical
+	})
+
+	numWarnings = s.reportBy(sb, false, func(cs checkState) bool {
+		return cs.Status == nagiosWarning
+	})
+
+	numUnknown = s.reportBy(sb, false, func(cs checkState) bool {
+		return cs.Status == nagiosUnknown
+	})
+
+	numOK = s.countBy(func(cs checkState) bool {
+		return cs.Status == nagiosOk
+	})
 
 	return
 }

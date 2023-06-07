@@ -3,27 +3,27 @@ package internal
 import "context"
 
 func Run(ctx context.Context, configFile string, renotify bool) {
-	config, err := newConfig(configFile)
+	conf, err := newConfig(configFile)
 	if err != nil {
 		panic(err)
 	}
 
-	if err := config.sanityCheck(); err != nil {
-		notifyError(config, err)
+	if err := conf.sanityCheck(); err != nil {
+		notifyError(conf, err)
 	}
 
-	state, err := readState(config)
+	state, err := readState(conf)
 	if err != nil {
-		notifyError(config, err)
+		notifyError(conf, err)
 	}
 
-	state = runChecks(ctx, state, config)
+	state = runChecks(ctx, state, conf)
 
 	if err := state.persist(); err != nil {
-		notifyError(config, err)
+		notifyError(conf, err)
 	}
 
 	if subject, body, doNotify := state.report(renotify); doNotify {
-		notify(config, subject, body)
+		notify(conf, subject, body)
 	}
 }

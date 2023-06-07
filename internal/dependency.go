@@ -10,13 +10,13 @@ type dependency struct {
 	nokMap map[string]chan struct{}
 }
 
-func newDependency(config config) dependency {
+func newDependency(conf config) dependency {
 	d := dependency{
-		okMap:  make(map[string]chan struct{}, len(config.Checks)),
-		nokMap: make(map[string]chan struct{}, len(config.Checks)),
+		okMap:  make(map[string]chan struct{}, len(conf.Checks)),
+		nokMap: make(map[string]chan struct{}, len(conf.Checks)),
 	}
 
-	for name := range config.Checks {
+	for name := range conf.Checks {
 		d.okMap[name] = make(chan struct{})
 		d.nokMap[name] = make(chan struct{})
 	}

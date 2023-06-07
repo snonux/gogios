@@ -6,15 +6,16 @@ import (
 	"net/smtp"
 )
 
-func notify(config config, subject, body string) error {
+func notify(conf config, subject, body string) error {
 	log.Println("notify", subject, body)
 
-	headers := make(map[string]string)
-	headers["From"] = config.EmailFrom
-	headers["To"] = config.EmailTo
-	headers["Subject"] = subject
-	headers["MIME-Version"] = "1.0"
-	headers["Content-Type"] = "text/plain; charset=\"utf-8\""
+	headers := map[string]string{
+		"From":         conf.EmailFrom,
+		"To":           conf.EmailTo,
+		"Subject":      subject,
+		"MIME-Version": "1.0",
+		"Content-Type": "text/plain; charset=\"utf-8\"",
+	}
 
 	header := ""
 	for k, v := range headers {
@@ -22,12 +23,12 @@ func notify(config config, subject, body string) error {
 	}
 
 	message := header + "\r\n" + body
-	log.Println("Using SMTP server", config.SMTPServer)
+	log.Println("Using SMTP server", conf.SMTPServer)
 
-	return smtp.SendMail(config.SMTPServer, nil, config.EmailFrom,
-		[]string{config.EmailTo}, []byte(message))
+	return smtp.SendMail(conf.SMTPServer, nil, conf.EmailFrom,
+		[]string{conf.EmailTo}, []byte(message))
 }
 
-func notifyError(config config, err error) error {
-	return notify(config, fmt.Sprintf("GOGIOS: An error occured: %v", err), err.Error())
+func notifyError(conf config, err error) error {
+	return notify(conf, fmt.Sprintf("GOGIOS: An error occured: %v", err), err.Error())
 }
