@@ -4,9 +4,15 @@ tasks:
   build:
     cmds:
       - go build -o gogios cmd/gogios/main.go
-  check:
+  dev:
+    deps: ["vet", "lint"]
+    cmds:
+      - go build -race -o gogios cmd/gogios/main.go
+  vet:
     cmds:
       - go vet **/*.go
+  lint:
+    cmds:
       - golangci-lint run
   lint-install:
     cmds:
