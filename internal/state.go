@@ -3,7 +3,7 @@ package internal
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"log"
 	"os"
 	"path/filepath"
@@ -42,7 +42,7 @@ func readState(conf config) (state, error) {
 	}
 	defer file.Close()
 
-	bytes, err := ioutil.ReadAll(file)
+	bytes, err := io.ReadAll(file)
 	if err != nil {
 		return s, err
 	}
@@ -91,7 +91,7 @@ func (s state) persist() error {
 		return err
 	}
 
-	return ioutil.WriteFile(s.stateFile, jsonData, os.ModePerm)
+	return os.WriteFile(s.stateFile, jsonData, os.ModePerm)
 }
 
 func (s state) report(renotify bool) (string, string, bool) {

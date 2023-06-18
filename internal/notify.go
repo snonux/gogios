@@ -29,6 +29,8 @@ func notify(conf config, subject, body string) error {
 		[]string{conf.EmailTo}, []byte(message))
 }
 
-func notifyError(conf config, err error) error {
-	return notify(conf, fmt.Sprintf("GOGIOS: An error occured: %v", err), err.Error())
+func notifyError(conf config, err error) {
+	if err := notify(conf, fmt.Sprintf("GOGIOS: An error occured: %v", err), err.Error()); err != nil {
+		log.Println("error: ", err)
+	}
 }

@@ -1,6 +1,9 @@
 package internal
 
-import "context"
+import (
+	"context"
+	"log"
+)
 
 func Run(ctx context.Context, configFile string, renotify bool) {
 	conf, err := newConfig(configFile)
@@ -24,6 +27,8 @@ func Run(ctx context.Context, configFile string, renotify bool) {
 	}
 
 	if subject, body, doNotify := state.report(renotify); doNotify {
-		notify(conf, subject, body)
+		if err := notify(conf, subject, body); err != nil {
+			log.Println("error:", err)
+		}
 	}
 }
