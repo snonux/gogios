@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"path/filepath"
 	"strings"
 )
 
@@ -78,10 +79,18 @@ func (s state) update(result checkResult) {
 }
 
 func (s state) persist() error {
+	stateDir := filepath.Dir(s.stateFile)
+	if _, err := os.Stat(stateDir); os.IsNotExist(err) {
+		if err := os.MkdirAll(stateDir, 0755); err != nil {
+			return err
+		}
+	}
+
 	jsonData, err := json.Marshal(s.checks)
 	if err != nil {
 		return err
 	}
+
 	return ioutil.WriteFile(s.stateFile, jsonData, os.ModePerm)
 }
 
