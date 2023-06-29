@@ -8,7 +8,7 @@ import (
 func Run(ctx context.Context, configFile string, renotify bool) {
 	conf, err := newConfig(configFile)
 	if err != nil {
-		panic(err)
+		log.Fatal(err)
 	}
 
 	if err := conf.sanityCheck(); err != nil {

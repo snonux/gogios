@@ -40,7 +40,7 @@ func newConfig(configFile string) (config, error) {
 	if conf.SMTPServer == "" {
 		hostname, err := os.Hostname()
 		if err != nil {
-			panic(err)
+			log.Fatal(err)
 		}
 		conf.SMTPServer = fmt.Sprintf("%s:25", hostname)
 		log.Println("Set SMTPServer to " + conf.SMTPServer)
