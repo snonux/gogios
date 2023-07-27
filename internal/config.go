@@ -58,7 +58,7 @@ func (conf config) sanityCheck() error {
 	for name, check := range conf.Checks {
 		for _, depName := range check.DependsOn {
 			if _, ok := conf.Checks[depName]; !ok {
-				return fmt.Errorf("Check '%s' depends on non existant check '%s'", name, depName)
+				return fmt.Errorf("check '%s' depends on non existant check '%s'", name, depName)
 			}
 		}
 	}
