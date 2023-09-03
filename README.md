@@ -62,6 +62,9 @@ doas usermod -d /var/run/gogios _gogios
 doas mkdir -p /var/run/gogios
 doas chown _gogios:_gogios /var/run/gogios
 doas chmod 750 /var/run/gogios
+echo if [ ! -d /var/run/gogios ]; then mkdir -p /var/run/gogios; fi | doas tee -a /etc/rc.local
+echo chown _gogios:_gogios /var/run/gogios | doas tee -a /etc/rc.local
+echo chmod 750 /var/run/gogios | doas tee -a /etc/rc.local
 ```
 
 Please note that creating a user and group might differ depending on your operating system. For other operating systems, consult their documentation for creating system users and groups.
