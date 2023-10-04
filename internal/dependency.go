@@ -44,7 +44,7 @@ func (d dependency) wait(ctx context.Context, dependencies []string) error {
 		case <-d.nokMap[dep]:
 			return fmt.Errorf("dependency '%s' is not OK!", dep)
 		case <-ctx.Done():
-			return fmt.Errorf("waited for too long for dependency '%s': %s", dep, ctx.Err().Error())
+			return fmt.Errorf("waited for too long for dependency '%s': %w", dep, ctx.Err())
 		}
 	}
 	return nil
