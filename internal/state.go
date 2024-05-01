@@ -94,7 +94,7 @@ func (s state) persist() error {
 	return os.WriteFile(s.stateFile, jsonData, os.ModePerm)
 }
 
-func (s state) report(renotify bool) (string, string, bool) {
+func (s state) report(renotify, force bool) (string, string, bool) {
 	var sb strings.Builder
 
 	sb.WriteString("This is the recent Gogios report!\n\n")
@@ -117,7 +117,8 @@ func (s state) report(renotify bool) (string, string, bool) {
 	subject := fmt.Sprintf("GOGIOS Report [C:%d W:%d U:%d OK:%d]",
 		numCriticals, numWarnings, numUnknown, numOK)
 
-	return subject, sb.String(), changed || (renotify && hasUnhandled)
+	doNotify := force || (changed || (renotify && hasUnhandled))
+	return subject, sb.String(), doNotify
 }
 
 func (s state) reportChanged(sb *strings.Builder) (changed bool) {

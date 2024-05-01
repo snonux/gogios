@@ -9,12 +9,13 @@ import (
 	"codeberg.org/snonux/gogios/internal"
 )
 
-const versionStr = "v1.0.3"
+const versionStr = "v1.1.0-develop"
 
 func main() {
 	configFile := flag.String("cfg", "/etc/gogios.json", "The config file")
 	timeout := flag.Int("timeout", 5, "Global timeout in minutes")
 	renotify := flag.Bool("renotify", false, "Renotify all unhandled")
+	force := flag.Bool("force", false, "Force sending out status")
 	version := flag.Bool("version", false, "Display version")
 	flag.Parse()
 
@@ -28,5 +29,5 @@ func main() {
 		time.Duration(*timeout)*time.Minute)
 	defer cancel()
 
-	internal.Run(ctx, *configFile, *renotify)
+	internal.Run(ctx, *configFile, *renotify, *force)
 }

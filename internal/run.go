@@ -5,7 +5,7 @@ import (
 	"log"
 )
 
-func Run(ctx context.Context, configFile string, renotify bool) {
+func Run(ctx context.Context, configFile string, renotify, force bool) {
 	conf, err := newConfig(configFile)
 	if err != nil {
 		log.Fatal(err)
@@ -26,7 +26,7 @@ func Run(ctx context.Context, configFile string, renotify bool) {
 		notifyError(conf, err)
 	}
 
-	if subject, body, doNotify := state.report(renotify); doNotify {
+	if subject, body, doNotify := state.report(renotify, force); doNotify {
 		if err := notify(conf, subject, body); err != nil {
 			log.Println("error:", err)
 		}
