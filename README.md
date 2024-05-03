@@ -4,6 +4,8 @@
 
 Gogios is a lightweight and minimalistic monitoring tool not designed for large-scale monitoring. It is ideal for monitoring self-hosted servers on a tiny scale, such as only a handful of servers or virtual machines (e.g. my personal infrastructure). If you have limited resources to monitor and require a simple yet effective solution, Gogios is an excellent choice. However, for larger environments with more complex monitoring requirements, it might be necessary to consider other monitoring solutions better suited for managing and scaling with increased monitoring demands.
 
+You can also read about it in this blog post: https://foo.zone/gemfeed/2023-06-01-kiss-server-monitoring-with-gogios.html
+
 ## Example alert
 
 This is an example alert report received via E-Mail. Whereas, `[C:2 W:0 U:0 OK:51]` means that we've got two alerts in status critical, 0 warnings, 0 unknowns and 51 OKs.
