@@ -168,12 +168,14 @@ To run Gogios via CRON on OpenBSD as the `gogios` user and check all services on
 Type `doas crontab -e -u _gogios` and press Enter to open the crontab file for the `_gogios` user for editing and add the following lines to the crontab file:
 
 ```
-*/5 8-22 * * * /usr/local/bin/gogios -cfg /etc/gogios.json
+*/5 8-22 * * * -s /usr/local/bin/gogios -cfg /etc/gogios.json
 0 7 * * * /usr/local/bin/gogios -renotify -cfg /etc/gogios.json
 0 3 * * 0 /usr/local/bin/gogios -force -cfg /etc/gogios.json
 ```
 
 Gogios is now configured to run every five minutes from 8 AM to 10 PM via CRON as the `_gogios` user. It will execute checks and send monitoring status updates via email whenever a check status changes according to your configuration. Additionally, Gogios will run once at 7 AM every morning to re-notify all unhandled alerts as a reminder. Furthermore, Gogios will also run every Sunday morning at 3 AM and will send out a notification even if all checks are in the state OK, providing ensurance that the email server is still functional.
+
+Notice the `-s` in the first CRON tab entry. This is incredibly useful for cron jobs that shouldn't run twice in parallel. If the job duration is longer than usual, you are ensured that it will never start a new instance until the previous one is done. This feature exists only in OpenBSD's CRON, so don't use it if you are using another OS.
 
 ### High-availability
 
