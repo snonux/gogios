@@ -168,9 +168,10 @@ Type `doas crontab -e -u _gogios` and press Enter to open the crontab file for t
 ```
 */5 8-22 * * * /usr/local/bin/gogios -cfg /etc/gogios.json
 0 7 * * * /usr/local/bin/gogios -renotify -cfg /etc/gogios.json
+0 3 * * 0 /usr/local/bin/gogios -force -cfg /etc/gogios.json
 ```
 
-Gogios is now configured to run every five minutes from 8 am to 10 pm via CRON as the `_gogios` user. It will execute the checks and send monitoring status whenever a check status changes via email according to your configuration. Also, Gogios will run once at 7 am every morning and re-notify all unhandled alerts as a reminder.
+Gogios is now configured to run every five minutes from 8 AM to 10 PM via CRON as the `_gogios` user. It will execute checks and send monitoring status updates via email whenever a check status changes according to your configuration. Additionally, Gogios will run once at 7 AM every morning to re-notify all unhandled alerts as a reminder. Furthermore, Gogios will also run every Sunday morning at 3 AM and will send out a notification even if all checks are in the state OK, providing ensurance that the email server is still functional.
 
 ### High-availability
 
