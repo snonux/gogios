@@ -43,7 +43,13 @@ func (c check) run(ctx context.Context, name string) checkResult {
 	parts := strings.Split(bytes.String(), "|")
 	output := strings.TrimSpace(parts[0])
 
-	return checkResult{name, output, nagiosCode(cmd.ProcessState.ExitCode())}
+	ec := cmd.ProcessState.ExitCode()
+	if ec < int(nagiosOk) || ec > int(nagiosUnknown) {
+		// If the exit code is not in the range of known Nagios codes, treat it as unknown
+		ec = int(nagiosUnknown)
+	}
+
+	return checkResult{name, output, nagiosCode(ec)}
 }
 
 func (c check) skip(name, output string) checkResult {
