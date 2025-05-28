@@ -2,7 +2,9 @@ package internal
 
 import (
 	"context"
+	"fmt"
 	"log"
+	"os"
 )
 
 func Run(ctx context.Context, configFile string, renotify, force bool) {
@@ -26,9 +28,30 @@ func Run(ctx context.Context, configFile string, renotify, force bool) {
 		notifyError(conf, err)
 	}
 
-	if subject, body, doNotify := state.report(renotify, force); doNotify {
+	subject, body, doNotify := state.report(renotify, force)
+	if doNotify {
 		if err := notify(conf, subject, body); err != nil {
 			log.Println("error:", err)
+			return
 		}
 	}
+	if err := persistReport(body, conf); err != nil {
+		notifyError(conf, err)
+	}
+}
+
+func persistReport(body string, conf config) error {
+	reportFile := fmt.Sprintf("%s/report.txt", conf.StateDir)
+	tmpFile := fmt.Sprintf("%s.tmp", reportFile)
+
+	f, err := os.Create(tmpFile)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	if _, err = f.WriteString(body); err != nil {
+		return err
+	}
+	return os.Rename(tmpFile, reportFile)
 }
