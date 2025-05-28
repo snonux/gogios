@@ -17,7 +17,7 @@ func Run(ctx context.Context, configFile string, renotify, force bool) {
 		notifyError(conf, err)
 	}
 
-	state, err := readState(conf)
+	state, err := newState(conf)
 	if err != nil {
 		notifyError(conf, err)
 	}

@@ -26,7 +26,7 @@ type state struct {
 	checks    map[string]checkState
 }
 
-func readState(conf config) (state, error) {
+func newState(conf config) (state, error) {
 	s := state{
 		stateFile: fmt.Sprintf("%s/state.json", conf.StateDir),
 		checks:    make(map[string]checkState),
@@ -77,6 +77,17 @@ func (s state) update(result checkResult) {
 	cs := checkState{result.status, prevStatus, result.epoch, result.output}
 	s.checks[result.name] = cs
 	log.Println(result.name, cs)
+}
+
+// To be used to merge the state of another server running Gogios
+func (s state) merge(other state) error {
+	for name, cs := range other.checks {
+		if _, ok := s.checks[name]; ok {
+			return fmt.Errorf("can't merge state due to duplicate check name '%s'", name)
+		}
+		s.checks[name] = cs
+	}
+	return nil
 }
 
 func (s state) persist() error {
