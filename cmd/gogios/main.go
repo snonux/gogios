@@ -9,7 +9,7 @@ import (
 	"codeberg.org/snonux/gogios/internal"
 )
 
-const versionStr = "v1.1.0"
+const versionStr = "v1.2.0-develop"
 
 func main() {
 	configFile := flag.String("cfg", "/etc/gogios.json", "The config file")
