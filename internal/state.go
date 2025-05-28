@@ -13,6 +13,7 @@ import (
 type checkState struct {
 	Status     nagiosCode
 	PrevStatus nagiosCode
+	Epoch      int64 `json:"Epoch,omitempty"`
 	output     string
 }
 
@@ -73,7 +74,7 @@ func (s state) update(result checkResult) {
 		prevStatus = prevState.Status
 	}
 
-	cs := checkState{result.status, prevStatus, result.output}
+	cs := checkState{result.status, prevStatus, result.epoch, result.output}
 	s.checks[result.name] = cs
 	log.Println(result.name, cs)
 }
