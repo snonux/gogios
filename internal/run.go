@@ -35,12 +35,12 @@ func Run(ctx context.Context, configFile string, renotify, force bool) {
 			return
 		}
 	}
-	if err := persistReport(body, conf); err != nil {
+	if err := persistReport(subject, body, conf); err != nil {
 		notifyError(conf, err)
 	}
 }
 
-func persistReport(body string, conf config) error {
+func persistReport(subject, body string, conf config) error {
 	reportFile := fmt.Sprintf("%s/report.txt", conf.StateDir)
 	tmpFile := fmt.Sprintf("%s.tmp", reportFile)
 
@@ -50,6 +50,9 @@ func persistReport(body string, conf config) error {
 	}
 	defer f.Close()
 
+	if _, err = f.WriteString(fmt.Sprintf("%s\n\n", subject)); err != nil {
+		return err
+	}
 	if _, err = f.WriteString(body); err != nil {
 		return err
 	}

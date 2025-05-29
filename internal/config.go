@@ -15,6 +15,7 @@ type config struct {
 	StateDir         string `json:"StateDir,omitempty"`
 	CheckTimeoutS    int
 	CheckConcurrency int
+	StaleThreshold   int `json:"StaleThreshold,omitempty"`
 	Checks           map[string]check
 }
 
@@ -49,6 +50,10 @@ func newConfig(configFile string) (config, error) {
 	if conf.StateDir == "" {
 		conf.StateDir = "."
 		log.Println("Set StateDir to " + conf.StateDir)
+	}
+
+	if conf.StaleThreshold == 0 {
+		conf.StaleThreshold = 3600 // Default to 1 hour
 	}
 
 	return conf, nil

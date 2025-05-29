@@ -8,10 +8,10 @@ You can also read about it in this blog post: https://foo.zone/gemfeed/2023-06-0
 
 ## Example alert
 
-This is an example alert report received via E-Mail. Whereas, `[C:2 W:0 U:0 OK:51]` means that we've got two alerts in status critical, 0 warnings, 0 unknowns and 51 OKs.
+This is an example alert report received via E-Mail. Whereas, `[C:2 W:0 U:0 S:0 OK:51]` means that we've got two alerts in status critical, 0 warnings, 0 unknowns, 0 stale alerts (last check too far in the past) and 51 OKs.
 
 ```
-Subject: GOGIOS Report [C:2 W:0 U:0 OK:51]
+Subject: GOGIOS Report [C:2 W:0 U:0 S:0 OK:51]
 
 This is the recent Gogios report!
 
@@ -24,6 +24,10 @@ OK->CRITICAL: Check ICMP6 vulcan.buetow.org: Check command timed out
 
 CRITICAL: Check ICMP4 vulcan.buetow.org: Check command timed out
 CRITICAL: Check ICMP6 vulcan.buetow.org: Check command timed out
+
+# Stale alerts:
+
+There are no stale alerts...
 
 Have a nice day!
 ```
@@ -106,6 +110,7 @@ To configure Gogios, create a JSON configuration file (e.g., `/etc/gogios.json`)
   "EmailFrom": "gogios@buetow.org",
   "CheckTimeoutS": 10,
   "CheckConcurrency": 2,
+  "StaleThreshold": 3600,
   "StateDir": "/var/run/gogios",
   "Checks": {
     "Check ICMP4 www.foo.zone": {
@@ -142,6 +147,7 @@ To configure Gogios, create a JSON configuration file (e.g., `/etc/gogios.json`)
 * `EmailFrom`: Indicates the sender's email address for email notifications.
 * `CheckTimeoutS`: Sets the timeout for checks in seconds.
 * `CheckConcurrency`: Determines the number of concurrent checks that can run simultaneously.
+* `StaleThreshold`: Defines the threshold in seconds for considering a check stale if it hasn't been updated within this time frame.
 * `StateDir`: Specifies the directory where Gogios stores its persistent state in a `state.json` file. 
 * `Checks`: Defines a list of checks to be performed, each with a unique name, plugin path, and arguments. 
 

@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 type checkState struct {
@@ -22,14 +23,16 @@ func (cs checkState) changed() bool {
 }
 
 type state struct {
-	stateFile string
-	checks    map[string]checkState
+	stateFile  string
+	checks     map[string]checkState
+	staleEpoch int64
 }
 
 func newState(conf config) (state, error) {
 	s := state{
-		stateFile: fmt.Sprintf("%s/state.json", conf.StateDir),
-		checks:    make(map[string]checkState),
+		stateFile:  fmt.Sprintf("%s/state.json", conf.StateDir),
+		checks:     make(map[string]checkState),
+		staleEpoch: time.Now().Unix() - int64(conf.StaleThreshold),
 	}
 
 	if _, err := os.Stat(s.stateFile); err != nil {
@@ -124,35 +127,41 @@ func (s state) report(renotify, force bool) (string, string, bool) {
 		sb.WriteString("There are no unhandled alerts...\n\n")
 	}
 
+	sb.WriteString("# Stale alerts:\n\n")
+	numStale := s.reportStaleAlerts(&sb)
+	if numStale == 0 {
+		sb.WriteString("There are no stale alerts...\n\n")
+	}
+
 	sb.WriteString("Have a nice day!\n")
 
-	subject := fmt.Sprintf("GOGIOS Report [C:%d W:%d U:%d OK:%d]",
-		numCriticals, numWarnings, numUnknown, numOK)
+	subject := fmt.Sprintf("GOGIOS Report [C:%d W:%d U:%d S:%d OK:%d]",
+		numCriticals, numWarnings, numUnknown, numStale, numOK)
 
 	doNotify := force || (changed || (renotify && hasUnhandled))
 	return subject, sb.String(), doNotify
 }
 
 func (s state) reportChanged(sb *strings.Builder) (changed bool) {
-	if 0 < s.reportBy(sb, true, func(cs checkState) bool {
+	if 0 < s.reportBy(sb, true, false, func(cs checkState) bool {
 		return cs.Status == nagiosCritical && cs.changed()
 	}) {
 		changed = true
 	}
 
-	if 0 < s.reportBy(sb, true, func(cs checkState) bool {
+	if 0 < s.reportBy(sb, true, false, func(cs checkState) bool {
 		return cs.Status == nagiosWarning && cs.changed()
 	}) {
 		changed = true
 	}
 
-	if 0 < s.reportBy(sb, true, func(cs checkState) bool {
+	if 0 < s.reportBy(sb, true, false, func(cs checkState) bool {
 		return cs.Status == nagiosUnknown && cs.changed()
 	}) {
 		changed = true
 	}
 
-	if 0 < s.reportBy(sb, true, func(cs checkState) bool {
+	if 0 < s.reportBy(sb, true, false, func(cs checkState) bool {
 		return cs.Status == nagiosOk && cs.changed()
 	}) {
 		changed = true
@@ -164,15 +173,15 @@ func (s state) reportChanged(sb *strings.Builder) (changed bool) {
 func (s state) reportUnhandled(sb *strings.Builder) (numCriticals, numWarnings,
 	numUnknown, numOK int) {
 
-	numCriticals = s.reportBy(sb, false, func(cs checkState) bool {
+	numCriticals = s.reportBy(sb, false, false, func(cs checkState) bool {
 		return cs.Status == nagiosCritical
 	})
 
-	numWarnings = s.reportBy(sb, false, func(cs checkState) bool {
+	numWarnings = s.reportBy(sb, false, false, func(cs checkState) bool {
 		return cs.Status == nagiosWarning
 	})
 
-	numUnknown = s.reportBy(sb, false, func(cs checkState) bool {
+	numUnknown = s.reportBy(sb, false, false, func(cs checkState) bool {
 		return cs.Status == nagiosUnknown
 	})
 
@@ -183,12 +192,21 @@ func (s state) reportUnhandled(sb *strings.Builder) (numCriticals, numWarnings,
 	return
 }
 
-func (s state) reportBy(sb *strings.Builder, showStatusChange bool,
+func (s state) reportStaleAlerts(sb *strings.Builder) int {
+	return s.reportBy(sb, false, true, func(cs checkState) bool {
+		return cs.Epoch < s.staleEpoch
+	})
+}
+
+func (s state) reportBy(sb *strings.Builder, showStatusChange, isStaleReport bool,
 	filter func(cs checkState) bool) (count int) {
 
 	for name, cs := range s.checks {
 		if !filter(cs) {
 			continue
+		}
+		if !isStaleReport && cs.Epoch < s.staleEpoch {
+			continue // skip stale checks in non-stale report
 		}
 		count++
 
