@@ -17,6 +17,7 @@ func Run(ctx context.Context, configFile string, renotify, force bool) {
 		notifyError(conf, err)
 	}
 
+	// TODO: Also read other state files? Merge them..
 	state, err := newState(conf)
 	if err != nil {
 		notifyError(conf, err)
