@@ -220,6 +220,12 @@ func (s state) reportBy(sb *strings.Builder, showStatusChange, isStaleReport boo
 		sb.WriteString(name)
 		sb.WriteString(": ")
 		sb.WriteString(cs.output)
+
+		if isStaleReport {
+			lastCheckedAgo := time.Since(time.Unix(cs.Epoch, 0))
+			sb.WriteString(fmt.Sprintf(" (last checked %v ago)", lastCheckedAgo))
+		}
+
 		sb.WriteString("\n")
 	}
 
