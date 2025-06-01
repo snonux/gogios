@@ -12,11 +12,12 @@ type config struct {
 	EmailTo          string
 	EmailFrom        string
 	SMTPServer       string `json:"SMTPServer,omitempty"`
+	SMTPDisable      bool   `json:"SMTPDisable,omitempty"` // TODO: Document this option
 	StateDir         string `json:"StateDir,omitempty"`
 	CheckTimeoutS    int
 	CheckConcurrency int
 	StaleThreshold   int      `json:"StaleThreshold,omitempty"`
-	Federated        []string `json:"Federated,omitempty"`
+	Federated        []string `json:"Federated,omitempty"` // TODO: Document this option
 	Checks           map[string]check
 }
 

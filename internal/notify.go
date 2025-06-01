@@ -7,6 +7,10 @@ import (
 )
 
 func notify(conf config, subject, body string) error {
+	if conf.SMTPDisable {
+		log.Println("Notification disabled")
+		return nil
+	}
 	log.Println("notify", subject, body)
 
 	headers := map[string]string{

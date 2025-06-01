@@ -16,6 +16,7 @@ type checkState struct {
 	PrevStatus nagiosCode
 	Epoch      int64 `json:"Epoch,omitempty"`
 	output     string
+	federated  bool
 }
 
 func (cs checkState) changed() bool {
@@ -70,7 +71,6 @@ func newState(conf config) (state, error) {
 	return s, nil
 }
 
-
 func (s state) update(result checkResult) {
 	prevStatus := nagiosUnknown
 	prevState, ok := s.checks[result.name]
@@ -78,7 +78,7 @@ func (s state) update(result checkResult) {
 		prevStatus = prevState.Status
 	}
 
-	cs := checkState{result.status, prevStatus, result.epoch, result.output}
+	cs := checkState{result.status, prevStatus, result.epoch, result.output, result.federated}
 	s.checks[result.name] = cs
 	log.Println(result.name, cs)
 }
@@ -229,6 +229,9 @@ func (s state) reportBy(sb *strings.Builder, showStatusChange, isStaleReport boo
 		sb.WriteString(name)
 		sb.WriteString(": ")
 		sb.WriteString(cs.output)
+		if cs.federated {
+			sb.WriteString(" [federated]")
+		}
 
 		if isStaleReport {
 			lastCheckedAgo := time.Since(time.Unix(cs.Epoch, 0))
