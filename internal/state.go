@@ -70,6 +70,7 @@ func newState(conf config) (state, error) {
 	return s, nil
 }
 
+
 func (s state) update(result checkResult) {
 	prevStatus := nagiosUnknown
 	prevState, ok := s.checks[result.name]
@@ -91,6 +92,14 @@ func (s state) merge(other state) error {
 		s.checks[name] = cs
 	}
 	return nil
+}
+
+func (s state) mergeFromBytes(bytes []byte) error {
+	var other state
+	if err := json.Unmarshal(bytes, &other.checks); err != nil {
+		return err
+	}
+	return s.merge(other)
 }
 
 func (s state) persist() error {

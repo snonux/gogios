@@ -17,13 +17,13 @@ func Run(ctx context.Context, configFile string, renotify, force bool) {
 		notifyError(conf, err)
 	}
 
-	// TODO: Also read other state files? Merge them..
 	state, err := newState(conf)
 	if err != nil {
 		notifyError(conf, err)
 	}
 
 	state = runChecks(ctx, state, conf)
+	state = mergeFederated(ctx, state, conf)
 
 	if err := state.persist(); err != nil {
 		notifyError(conf, err)

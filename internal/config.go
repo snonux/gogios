@@ -15,7 +15,8 @@ type config struct {
 	StateDir         string `json:"StateDir,omitempty"`
 	CheckTimeoutS    int
 	CheckConcurrency int
-	StaleThreshold   int `json:"StaleThreshold,omitempty"`
+	StaleThreshold   int      `json:"StaleThreshold,omitempty"`
+	Federated        []string `json:"Federated,omitempty"`
 	Checks           map[string]check
 }
 
