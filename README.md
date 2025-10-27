@@ -43,7 +43,7 @@ To compile and install Gogios on OpenBSD, follow these steps:
 ```
 git clone https://codeberg.org/snonux/gogios.git
 cd gogios
-go build -o gogios cmd/gogios/main.go # Or, alternatively: `task build` with taskfile.dev 
+go build -o gogios cmd/gogios/main.go # Or, alternatively: `mage build`.
 doas cp gogios /usr/local/bin/gogios
 doas chmod 755 /usr/local/bin/gogios
 ```
