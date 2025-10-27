@@ -3,6 +3,7 @@ package internal
 import (
 	"context"
 	"log"
+	"math/rand"
 	"sync"
 	"time"
 )
@@ -36,6 +37,25 @@ func runChecks(ctx context.Context, state state, conf config) state {
 	inputWg.Add(len(conf.Checks))
 
 	for check := range inputCh {
+		if age := state.age(check.name); check.RunInterval > int(age.Seconds()) {
+			lastCheckState, ok := state.checks[check.name]
+			if ok {
+				log.Printf("Skipping %s: interval not yet reached (%v (%v) <= %v)", check.name,
+					int(age.Seconds()), age, check.RunInterval)
+				outputCh <- checkResult{
+					name:      check.name,
+					output:    lastCheckState.output,
+					epoch:     lastCheckState.Epoch,
+					status:    lastCheckState.Status,
+					federated: lastCheckState.federated,
+				}
+				inputWg.Done()
+				continue
+			}
+			log.Println("Something went wrong... expected check state for", check,
+				"bug got nothing! Proceeding anyway")
+		}
+
 		go func(check namedCheck) {
 			outputCh <- runCheck(ctx, limitCh, deps, check, conf, check.Retries)
 			inputWg.Done()
@@ -52,12 +72,18 @@ func runChecks(ctx context.Context, state state, conf config) state {
 	return state
 }
 
-func runCheck(ctx context.Context, limitCh chan struct{},
-	deps dependency, check namedCheck, conf config, retries int) checkResult {
-
+func runCheck(ctx context.Context, limitCh chan struct{}, deps dependency,
+	check namedCheck, conf config, retries int,
+) checkResult {
 	if err := deps.wait(ctx, check.DependsOn); err != nil {
 		deps.notOk(check.name)
 		return check.skip(err.Error())
+	}
+
+	if check.RandomSpread > 0 {
+		d := time.Duration(rand.Intn(check.RandomSpread)) * time.Second
+		log.Printf("Sleeping %v before running %s", d, check.name)
+		time.Sleep(d)
 	}
 
 	limitCh <- struct{}{}

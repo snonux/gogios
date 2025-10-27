@@ -83,6 +83,14 @@ func (s state) update(result checkResult) {
 	log.Println(result.name, cs)
 }
 
+func (s state) age(name string) time.Duration {
+	if prevState, ok := s.checks[name]; ok {
+		return time.Since(time.Unix(prevState.Epoch, 0))
+	}
+
+	return time.Duration(0)
+}
+
 // To be used to merge the state of another server running Gogios
 func (s state) merge(other state) error {
 	for name, cs := range other.checks {
@@ -105,7 +113,7 @@ func (s state) mergeFromBytes(bytes []byte) error {
 func (s state) persist() error {
 	stateDir := filepath.Dir(s.stateFile)
 	if _, err := os.Stat(stateDir); os.IsNotExist(err) {
-		if err := os.MkdirAll(stateDir, 0755); err != nil {
+		if err := os.MkdirAll(stateDir, 0o755); err != nil {
 			return err
 		}
 	}
@@ -180,8 +188,8 @@ func (s state) reportChanged(sb *strings.Builder) (changed bool) {
 }
 
 func (s state) reportUnhandled(sb *strings.Builder) (numCriticals, numWarnings,
-	numUnknown, numOK int) {
-
+	numUnknown, numOK int,
+) {
 	numCriticals = s.reportBy(sb, false, false, func(cs checkState) bool {
 		return cs.Status == nagiosCritical
 	})
@@ -208,8 +216,8 @@ func (s state) reportStaleAlerts(sb *strings.Builder) int {
 }
 
 func (s state) reportBy(sb *strings.Builder, showStatusChange, isStaleReport bool,
-	filter func(cs checkState) bool) (count int) {
-
+	filter func(cs checkState) bool,
+) (count int) {
 	for name, cs := range s.checks {
 		if !filter(cs) {
 			continue

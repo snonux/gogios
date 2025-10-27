@@ -14,6 +14,8 @@ type check struct {
 	DependsOn     []string `json:"DependsOn,omitempty"`
 	Retries       int      `json:"Retries,omitempty"`
 	RetryInterval int      `json:"RetryInterval,omitempty"`
+	RunInterval   int      `json:"RunInterval,omitempty"`
+	RandomSpread  int      `json:"RandomSpread,omitempty"`
 }
 
 type namedCheck struct {

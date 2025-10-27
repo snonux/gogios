@@ -117,13 +117,15 @@ To configure Gogios, create a JSON configuration file (e.g., `/etc/gogios.json`)
       "Plugin": "/usr/local/libexec/nagios/check_ping",
       "Args": [ "-H", "www.foo.zone", "-4", "-w", "50,10%", "-c", "100,15%" ],
       "Retries": 3,
-      "RetryInterval": 10
+      "RetryInterval": 10,
+      "RandomSpread": 60
     },
     "Check ICMP6 www.foo.zone": {
       "Plugin": "/usr/local/libexec/nagios/check_ping",
-      "Args": [ "-H", "www.foo.zone", "-6", "-w", "50,10%", "-c", "100,15%" ]
+      "Args": [ "-H", "www.foo.zone", "-6", "-w", "50,10%", "-c", "100,15%" ],
       "Retries": 3,
-      "RetryInterval": 10
+      "RetryInterval": 10,
+      "RunInterval": 300
     },
     "www.foo.zone HTTP IPv4": {
       "Plugin": "/usr/local/libexec/nagios/check_http",
@@ -156,6 +158,10 @@ Adjust the configuration file according to your needs, specifying the checks you
 If you want to execute checks only when another check succeeded (status OK), use `DependsOn`. In the example above, the HTTP checks won't run when the hosts aren't pingable. They will show up as `UNKNOWN` in the report.
 
 `Retries` and `RetryInterval` are optional check configuration parameters. In case of failure, Gogios will retry `Retries` times each `RetryInterval` seconds.
+
+`RandomSpread` is an optional check configuration parameter. It will cause a random sleep of up to N seconds (specified by config by each check) before the check is being executed. This is useful to avoid all checks running at the same time.
+
+`RunInterval` is an optional check configuration parameter. It defines the minimum interval in seconds between two executions of a check. This is useful if you run gogios more frequently than you want to run a specific check.
 
 For remote checks, use the `check_nrpe` plugin. You also need to have the NRPE server set up correctly on the target host (out of scope for this document).
 
