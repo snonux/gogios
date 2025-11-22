@@ -12,11 +12,15 @@ import (
 )
 
 type checkState struct {
-	Status     nagiosCode
-	PrevStatus nagiosCode
-	Epoch      int64 `json:"Epoch,omitempty"`
-	output     string
-	federated  bool
+	Status        nagiosCode
+	PrevStatus    nagiosCode
+	Epoch         int64 `json:"Epoch,omitempty"`
+	output        string
+	federatedFrom string
+}
+
+func (cs checkState) federated() bool {
+	return cs.federatedFrom != ""
 }
 
 func (cs checkState) changed() bool {
@@ -78,7 +82,7 @@ func (s state) update(result checkResult) {
 		prevStatus = prevState.Status
 	}
 
-	cs := checkState{result.status, prevStatus, result.epoch, result.output, result.federated}
+	cs := checkState{result.status, prevStatus, result.epoch, result.output, result.federatedFrom}
 	s.checks[result.name] = cs
 	log.Println(result.name, cs)
 }
@@ -237,8 +241,10 @@ func (s state) reportBy(sb *strings.Builder, showStatusChange, isStaleReport boo
 		sb.WriteString(name)
 		sb.WriteString(": ")
 		sb.WriteString(cs.output)
-		if cs.federated {
-			sb.WriteString(" [federated]")
+		if cs.federated() {
+			sb.WriteString(" [federated from ")
+			sb.WriteString(cs.federatedFrom)
+			sb.WriteString("]")
 		}
 
 		if isStaleReport {

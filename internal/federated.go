@@ -20,9 +20,16 @@ func mergeFederated(ctx context.Context, state state, conf config) state {
 	for _, endpoint := range conf.Federated {
 		log.Println("Querying federated endpoint", endpoint)
 		cs := checkResult{
-			name:      fmt.Sprintf("Federated endpoint %s", endpoint),
-			epoch:     time.Now().Unix(),
-			federated: true,
+			name:  fmt.Sprintf("Federated endpoint %s", endpoint),
+			epoch: time.Now().Unix(),
+			federatedFrom: func() string {
+				// Extract the hostname from the endpoint
+				u, err := http.NewRequest("GET", endpoint, nil)
+				if err != nil {
+					return endpoint
+				}
+				return u.URL.Hostname()
+			}(),
 		}
 
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)

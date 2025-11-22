@@ -24,12 +24,16 @@ type namedCheck struct {
 }
 
 type checkResult struct {
-	name      string
-	output    string
-	epoch     int64
-	status    nagiosCode
-	federated bool
+	name          string
+	output        string
+	epoch         int64
+	status        nagiosCode
+	federatedFrom string
 }
+
+// func (c checkResult) federated() bool {
+// 	return c.federatedFrom != ""
+// }
 
 func (c check) run(ctx context.Context, name string) checkResult {
 	cmd := exec.CommandContext(ctx, c.Plugin, c.Args...)
@@ -40,7 +44,7 @@ func (c check) run(ctx context.Context, name string) checkResult {
 
 	if err := cmd.Run(); err != nil {
 		if ctx.Err() == context.DeadlineExceeded {
-			return checkResult{name, "Check command timed out", time.Now().Unix(), nagiosCritical, false}
+			return checkResult{name, "Check command timed out", time.Now().Unix(), nagiosCritical, ""}
 		}
 	}
 
@@ -54,11 +58,11 @@ func (c check) run(ctx context.Context, name string) checkResult {
 		ec = int(nagiosUnknown)
 	}
 
-	return checkResult{name, output, time.Now().Unix(), nagiosCode(ec), false}
+	return checkResult{name, output, time.Now().Unix(), nagiosCode(ec), ""}
 }
 
 func (c check) skip(name, output string) checkResult {
-	return checkResult{name, output, time.Now().Unix(), nagiosUnknown, false}
+	return checkResult{name, output, time.Now().Unix(), nagiosUnknown, ""}
 }
 
 func (c namedCheck) run(ctx context.Context) checkResult {

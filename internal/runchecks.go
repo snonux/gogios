@@ -43,11 +43,11 @@ func runChecks(ctx context.Context, state state, conf config) state {
 				log.Printf("Skipping %s: interval not yet reached (%v (%v) <= %v)", check.name,
 					int(age.Seconds()), age, check.RunInterval)
 				outputCh <- checkResult{
-					name:      check.name,
-					output:    lastCheckState.output,
-					epoch:     lastCheckState.Epoch,
-					status:    lastCheckState.Status,
-					federated: lastCheckState.federated,
+					name:          check.name,
+					output:        lastCheckState.output,
+					epoch:         lastCheckState.Epoch,
+					status:        lastCheckState.Status,
+					federatedFrom: lastCheckState.federatedFrom,
 				}
 				inputWg.Done()
 				continue
