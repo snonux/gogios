@@ -14,6 +14,8 @@ type config struct {
 	SMTPServer       string `json:"SMTPServer,omitempty"`
 	SMTPDisable      bool   `json:"SMTPDisable,omitempty"` // TODO: Document this option
 	StateDir         string `json:"StateDir,omitempty"`
+	HTMLStatusFile   string `json:"HTMLStatusFile,omitempty"` // Path to HTML status file
+	HTMLDisable      bool   `json:"HTMLDisable,omitempty"`    // Disable HTML status page generation
 	CheckTimeoutS    int
 	CheckConcurrency int
 	StaleThreshold   int      `json:"StaleThreshold,omitempty"`
@@ -56,6 +58,11 @@ func newConfig(configFile string) (config, error) {
 
 	if conf.StaleThreshold == 0 {
 		conf.StaleThreshold = 3600 // Default to 1 hour
+	}
+
+	if !conf.HTMLDisable && conf.HTMLStatusFile == "" {
+		conf.HTMLStatusFile = "/var/www/htdocs/buetow.org/self/gogios/index.html"
+		log.Println("Set HTMLStatusFile to " + conf.HTMLStatusFile)
 	}
 
 	return conf, nil

@@ -39,6 +39,13 @@ func Run(ctx context.Context, configFile string, renotify, force bool) {
 	if err := persistReport(subject, body, conf); err != nil {
 		notifyError(conf, err)
 	}
+
+	// Generate HTML status page (unless disabled)
+	if !conf.HTMLDisable {
+		if err := persistHTMLReport(state, subject, conf); err != nil {
+			notifyError(conf, err)
+		}
+	}
 }
 
 func persistReport(subject, body string, conf config) error {
