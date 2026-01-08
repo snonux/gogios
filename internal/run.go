@@ -23,6 +23,7 @@ func Run(ctx context.Context, configFile string, renotify, force bool) {
 	}
 
 	state = runChecks(ctx, state, conf)
+	state = mergePrometheusAlerts(ctx, state, conf)
 	state = mergeFederated(ctx, state, conf)
 
 	if err := state.persist(); err != nil {

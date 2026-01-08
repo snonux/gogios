@@ -20,7 +20,9 @@ type config struct {
 	CheckConcurrency int
 	StaleThreshold   int      `json:"StaleThreshold,omitempty"`
 	Federated        []string `json:"Federated,omitempty"` // TODO: Document this option
-	Checks           map[string]check
+	PrometheusHosts    []string `json:"PrometheusHosts,omitempty"`
+	PrometheusTimeoutS int      `json:"PrometheusTimeoutS,omitempty"`
+	Checks             map[string]check
 }
 
 func newConfig(configFile string) (config, error) {
@@ -58,6 +60,10 @@ func newConfig(configFile string) (config, error) {
 
 	if conf.StaleThreshold == 0 {
 		conf.StaleThreshold = 3600 // Default to 1 hour
+	}
+
+	if conf.PrometheusTimeoutS == 0 {
+		conf.PrometheusTimeoutS = 2 // Default to 2 seconds
 	}
 
 	if !conf.HTMLDisable && conf.HTMLStatusFile == "" {
