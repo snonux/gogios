@@ -167,6 +167,36 @@ For remote checks, use the `check_nrpe` plugin. You also need to have the NRPE s
 
 The `state.json` file mentioned above keeps track of the monitoring state and check results between Gogios runs, enabling Gogios only to send email notifications when there are changes in the check status.
 
+### Prometheus Integration
+
+Gogios can integrate with Prometheus to monitor active alerts. When configured, Gogios will fetch alerts from Prometheus Alertmanager and treat them as monitoring checks, converting Prometheus alerts into Gogios reports.
+
+To enable Prometheus integration, add the following configuration parameters to your `gogios.json`:
+
+```json
+{
+  "PrometheusHosts": ["localhost:9090"],
+  "PrometheusTimeoutS": 2
+}
+```
+
+* `PrometheusHosts`: An array of Prometheus API endpoints (e.g., `["prometheus.example.com:9090"]`). Multiple hosts can be specified for failover; Gogios will try each host in order until one responds successfully.
+* `PrometheusTimeoutS`: The timeout in seconds for Prometheus API requests. Defaults to 2 seconds if not specified.
+
+Prometheus alerts will be converted to Gogios checks with the naming convention `Prometheus: <alertname>`. The alert severity is mapped as follows:
+
+* `critical` severity → Gogios CRITICAL status
+* Any other severity → Gogios WARNING status
+
+#### Watchdog Alert
+
+Gogios includes special handling for the Prometheus Watchdog alert, which is typically configured to always fire. This alert serves as a health check for Alertmanager itself.
+
+* **When Watchdog fires (expected behavior)**: Gogios reports it as OK status, confirming that Alertmanager is working properly.
+* **When Watchdog is absent or not firing (unexpected)**: Gogios reports it as CRITICAL, alerting you that Alertmanager may not be functioning correctly.
+
+This ensures you are immediately notified if Alertmanager stops working, preventing a situation where alerts might not be delivered properly.
+
 ## Running Gogios
 
 Now it is time to give it a first run. On OpenBSD, do:
