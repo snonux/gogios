@@ -9,17 +9,17 @@ import (
 )
 
 type config struct {
-	EmailTo          string
-	EmailFrom        string
-	SMTPServer       string `json:"SMTPServer,omitempty"`
-	SMTPDisable      bool   `json:"SMTPDisable,omitempty"` // TODO: Document this option
-	StateDir         string `json:"StateDir,omitempty"`
-	HTMLStatusFile   string `json:"HTMLStatusFile,omitempty"` // Path to HTML status file
-	HTMLDisable      bool   `json:"HTMLDisable,omitempty"`    // Disable HTML status page generation
-	CheckTimeoutS    int
-	CheckConcurrency int
-	StaleThreshold   int      `json:"StaleThreshold,omitempty"`
-	Federated        []string `json:"Federated,omitempty"` // TODO: Document this option
+	EmailTo            string
+	EmailFrom          string
+	SMTPServer         string `json:"SMTPServer,omitempty"`
+	SMTPDisable        bool   `json:"SMTPDisable,omitempty"` // TODO: Document this option
+	StateDir           string `json:"StateDir,omitempty"`
+	HTMLStatusFile     string `json:"HTMLStatusFile,omitempty"` // Path to HTML status file
+	HTMLDisable        bool   `json:"HTMLDisable,omitempty"`    // Disable HTML status page generation
+	CheckTimeoutS      int
+	CheckConcurrency   int
+	StaleThreshold     int      `json:"StaleThreshold,omitempty"`
+	Federated          []string `json:"Federated,omitempty"` // TODO: Document this option
 	PrometheusHosts    []string `json:"PrometheusHosts,omitempty"`
 	PrometheusTimeoutS int      `json:"PrometheusTimeoutS,omitempty"`
 	Checks             map[string]check

@@ -1,0 +1,27 @@
+GOGIOS Report [C:2 W:2 U:0 S:0 OK:1]
+
+This is the recent Gogios report!
+
+# Alerts with status changed:
+
+UNKNOWN->CRITICAL: Prometheus: KubeProxyDown: KubeProxyDown [critical]: Target disappeared from Prometheus target discovery.
+UNKNOWN->CRITICAL: Prometheus: KubeSchedulerDown: KubeSchedulerDown [critical]: Target disappeared from Prometheus target discovery.
+
+UNKNOWN->WARNING: Prometheus: TargetDown: TargetDown [warning]: One or more targets are unreachable.
+UNKNOWN->WARNING: Prometheus: Watchdog: Watchdog [none]: An alert that should always be firing to certify that Alertmanager is working properly.
+
+UNKNOWN->OK: localhost ping: OK: localhost is alive
+
+# Unhandled alerts:
+
+CRITICAL: Prometheus: KubeProxyDown: KubeProxyDown [critical]: Target disappeared from Prometheus target discovery.
+CRITICAL: Prometheus: KubeSchedulerDown: KubeSchedulerDown [critical]: Target disappeared from Prometheus target discovery.
+
+WARNING: Prometheus: TargetDown: TargetDown [warning]: One or more targets are unreachable.
+WARNING: Prometheus: Watchdog: Watchdog [none]: An alert that should always be firing to certify that Alertmanager is working properly.
+
+# Stale alerts:
+
+There are no stale alerts...
+
+Have a nice day!

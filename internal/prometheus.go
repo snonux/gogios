@@ -44,12 +44,33 @@ func mergePrometheusAlerts(ctx context.Context, state state, conf config) state 
 
 	log.Printf("Fetched %d firing alerts from Prometheus host %s", len(alerts), host)
 
+	// Check if Watchdog alert is firing
+	watchdogFiring := false
+
 	for _, alert := range alerts {
+		alertname := alert.Labels["alertname"]
+
+		// Special handling for Prometheus Watchdog alert
+		if alertname == "Watchdog" {
+			if alert.State == "firing" {
+				watchdogFiring = true
+				// Watchdog is firing as expected, treat as OK
+				cs := checkResult{
+					name:   "Prometheus: Watchdog",
+					output: "OK [none]: Alertmanager is working properly",
+					epoch:  time.Now().Unix(),
+					status: nagiosOk,
+				}
+				state.update(cs)
+			}
+			continue
+		}
+
 		if alert.State != "firing" {
 			continue
 		}
 
-		name := fmt.Sprintf("Prometheus: %s", alert.Labels["alertname"])
+		name := fmt.Sprintf("Prometheus: %s", alertname)
 		severity := alert.Labels["severity"]
 		description := alert.Annotations["summary"]
 		if description == "" {
@@ -66,9 +87,20 @@ func mergePrometheusAlerts(ctx context.Context, state state, conf config) state 
 
 		cs := checkResult{
 			name:   name,
-			output: fmt.Sprintf("%s [%s]: %s", alert.Labels["alertname"], severity, description),
+			output: fmt.Sprintf("%s [%s]: %s", alertname, severity, description),
 			epoch:  time.Now().Unix(),
 			status: status,
+		}
+		state.update(cs)
+	}
+
+	// If Watchdog is not firing, alert as critical
+	if !watchdogFiring {
+		cs := checkResult{
+			name:   "Prometheus: Watchdog",
+			output: "CRITICAL [none]: Watchdog alert is not firing, Alertmanager may not be working",
+			epoch:  time.Now().Unix(),
+			status: nagiosCritical,
 		}
 		state.update(cs)
 	}

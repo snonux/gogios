@@ -157,3 +157,105 @@ func TestMergePrometheusAlertsNoHosts(t *testing.T) {
 		t.Errorf("expected no checks, got %d", len(result.checks))
 	}
 }
+
+func TestMergePrometheusAlertsWatchdogFiring(t *testing.T) {
+	resp := prometheusResponse{
+		Status: "success",
+		Data: struct {
+			Alerts []prometheusAlert `json:"alerts"`
+		}{
+			Alerts: []prometheusAlert{
+				{
+					Labels:      map[string]string{"alertname": "Watchdog", "severity": "none"},
+					Annotations: map[string]string{"summary": "An alert that should always be firing to certify that Alertmanager is working properly."},
+					State:       "firing",
+				},
+				{
+					Labels:      map[string]string{"alertname": "HighCPU", "severity": "critical"},
+					Annotations: map[string]string{"summary": "CPU usage is high"},
+					State:       "firing",
+				},
+			},
+		},
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(resp)
+	}))
+	defer server.Close()
+
+	conf := config{
+		PrometheusHosts:    []string{strings.TrimPrefix(server.URL, "http://")},
+		PrometheusTimeoutS: 2,
+	}
+	s := state{checks: make(map[string]checkState)}
+
+	result := mergePrometheusAlerts(context.Background(), s, conf)
+
+	watchdog, ok := result.checks["Prometheus: Watchdog"]
+	if !ok {
+		t.Fatal("Watchdog check not found in state")
+	}
+
+	if watchdog.Status != nagiosOk {
+		t.Errorf("expected Watchdog status OK, got %v", watchdog.Status)
+	}
+
+	if !strings.Contains(watchdog.output, "working properly") {
+		t.Errorf("expected working properly message, got: %s", watchdog.output)
+	}
+
+	// Verify other alerts are still processed
+	cpu, ok := result.checks["Prometheus: HighCPU"]
+	if !ok {
+		t.Fatal("HighCPU check not found in state")
+	}
+	if cpu.Status != nagiosCritical {
+		t.Errorf("expected HighCPU status CRITICAL, got %v", cpu.Status)
+	}
+}
+
+func TestMergePrometheusAlertsWatchdogNotFiring(t *testing.T) {
+	resp := prometheusResponse{
+		Status: "success",
+		Data: struct {
+			Alerts []prometheusAlert `json:"alerts"`
+		}{
+			Alerts: []prometheusAlert{
+				{
+					Labels:      map[string]string{"alertname": "HighCPU", "severity": "critical"},
+					Annotations: map[string]string{"summary": "CPU usage is high"},
+					State:       "firing",
+				},
+			},
+		},
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(resp)
+	}))
+	defer server.Close()
+
+	conf := config{
+		PrometheusHosts:    []string{strings.TrimPrefix(server.URL, "http://")},
+		PrometheusTimeoutS: 2,
+	}
+	s := state{checks: make(map[string]checkState)}
+
+	result := mergePrometheusAlerts(context.Background(), s, conf)
+
+	watchdog, ok := result.checks["Prometheus: Watchdog"]
+	if !ok {
+		t.Fatal("Watchdog check not found in state")
+	}
+
+	if watchdog.Status != nagiosCritical {
+		t.Errorf("expected Watchdog status CRITICAL, got %v", watchdog.Status)
+	}
+
+	if !strings.Contains(watchdog.output, "not firing") {
+		t.Errorf("expected not firing message, got: %s", watchdog.output)
+	}
+}
