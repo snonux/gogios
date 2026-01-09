@@ -32,11 +32,16 @@ func mergePrometheusAlerts(ctx context.Context, state state, conf config) state 
 	alerts, host, err := fetchPrometheusAlerts(ctx, conf.PrometheusHosts, timeout)
 	if err != nil {
 		log.Printf("Failed to fetch Prometheus alerts from any host: %v", err)
+		checkName := "Prometheus alerts"
+		newStatus := nagiosWarning
+		if prevState, ok := state.checks[checkName]; ok && prevState.Status == newStatus {
+			return state
+		}
 		cs := checkResult{
-			name:   "Prometheus alerts",
-			output: fmt.Sprintf("CRITICAL: %v", err),
+			name:   checkName,
+			output: fmt.Sprintf("WARNING: %v", err),
 			epoch:  time.Now().Unix(),
-			status: nagiosCritical,
+			status: newStatus,
 		}
 		state.update(cs)
 		return state
