@@ -88,19 +88,19 @@ func TestHtmlReportBy(t *testing.T) {
 				Status:     nagiosCritical,
 				PrevStatus: nagiosOk,
 				Epoch:      now,
-				output:     "Service is down",
+				Output:     "Service is down",
 			},
 			"check2": {
 				Status:     nagiosWarning,
 				PrevStatus: nagiosWarning,
 				Epoch:      now,
-				output:     "High load",
+				Output:     "High load",
 			},
 			"check3": {
 				Status:     nagiosOk,
 				PrevStatus: nagiosOk,
 				Epoch:      staleEpoch - 100, // stale
-				output:     "All good",
+				Output:     "All good",
 			},
 		},
 	}
@@ -156,13 +156,13 @@ func TestHtmlReportChanged(t *testing.T) {
 				Status:     nagiosCritical,
 				PrevStatus: nagiosOk,
 				Epoch:      now,
-				output:     "Service failed",
+				Output:     "Service failed",
 			},
 			"check2": {
 				Status:     nagiosOk,
 				PrevStatus: nagiosOk,
 				Epoch:      now,
-				output:     "Still OK",
+				Output:     "Still OK",
 			},
 		},
 	}
@@ -195,25 +195,25 @@ func TestHtmlReport(t *testing.T) {
 				Status:     nagiosCritical,
 				PrevStatus: nagiosOk,
 				Epoch:      now,
-				output:     "Service is down",
+				Output:     "Service is down",
 			},
 			"warning_check": {
 				Status:     nagiosWarning,
 				PrevStatus: nagiosWarning,
 				Epoch:      now,
-				output:     "High CPU usage",
+				Output:     "High CPU usage",
 			},
 			"ok_check": {
 				Status:     nagiosOk,
 				PrevStatus: nagiosOk,
 				Epoch:      now,
-				output:     "Everything fine",
+				Output:     "Everything fine",
 			},
 			"stale_check": {
 				Status:     nagiosOk,
 				PrevStatus: nagiosOk,
 				Epoch:      staleEpoch - 100,
-				output:     "Not updated recently",
+				Output:     "Not updated recently",
 			},
 		},
 	}
@@ -263,7 +263,7 @@ func TestHtmlEscaping(t *testing.T) {
 				Status:     nagiosCritical,
 				PrevStatus: nagiosOk,
 				Epoch:      now,
-				output:     "Output with <tags> & \"quotes\"",
+				Output:     "Output with <tags> & \"quotes\"",
 			},
 		},
 	}
@@ -305,7 +305,7 @@ func TestPersistHTMLReport(t *testing.T) {
 				Status:     nagiosCritical,
 				PrevStatus: nagiosOk,
 				Epoch:      now,
-				output:     "Test output",
+				Output:     "Test output",
 			},
 		},
 	}
@@ -361,8 +361,8 @@ func TestFederatedChecks(t *testing.T) {
 				Status:        nagiosCritical,
 				PrevStatus:    nagiosOk,
 				Epoch:         now,
-				output:        "Remote service down",
-				federatedFrom: "remote.example.com",
+				Output:        "Remote service down",
+				FederatedFrom: "remote.example.com",
 			},
 		},
 	}
@@ -393,7 +393,7 @@ func TestW3CCompliance(t *testing.T) {
 				Status:     nagiosCritical,
 				PrevStatus: nagiosOk,
 				Epoch:      now,
-				output:     "Test output",
+				Output:     "Test output",
 			},
 		},
 	}

@@ -35,6 +35,10 @@ func mergePrometheusAlerts(ctx context.Context, state state, conf config) state 
 		checkName := "Prometheus alerts"
 		newStatus := nagiosWarning
 		if prevState, ok := state.checks[checkName]; ok && prevState.Status == newStatus {
+			if prevState.PrevStatus != newStatus {
+				prevState.PrevStatus = newStatus
+				state.checks[checkName] = prevState
+			}
 			return state
 		}
 		cs := checkResult{
@@ -48,6 +52,18 @@ func mergePrometheusAlerts(ctx context.Context, state state, conf config) state 
 	}
 
 	log.Printf("Fetched %d firing alerts from Prometheus host %s", len(alerts), host)
+
+	// Clear the "Prometheus alerts" check if fetch succeeded (was previously failing)
+	checkName := "Prometheus alerts"
+	if prevState, ok := state.checks[checkName]; ok && prevState.Status != nagiosOk {
+		cs := checkResult{
+			name:   checkName,
+			output: "OK: Prometheus connection restored",
+			epoch:  time.Now().Unix(),
+			status: nagiosOk,
+		}
+		state.update(cs)
+	}
 
 	// Check if Watchdog alert is firing
 	watchdogFiring := false

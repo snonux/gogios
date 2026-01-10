@@ -176,12 +176,12 @@ func (s state) htmlReportBy(sb *strings.Builder, showStatusChange, isStaleReport
 		sb.WriteString(": ")
 		sb.WriteString(html.EscapeString(name))
 		sb.WriteString(": ")
-		sb.WriteString(html.EscapeString(cs.output))
+		sb.WriteString(html.EscapeString(cs.Output))
 
 		// Show federated source if applicable
 		if cs.federated() {
 			sb.WriteString(" [federated from ")
-			sb.WriteString(html.EscapeString(cs.federatedFrom))
+			sb.WriteString(html.EscapeString(cs.FederatedFrom))
 			sb.WriteString("]")
 		}
 

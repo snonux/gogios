@@ -44,10 +44,10 @@ func runChecks(ctx context.Context, state state, conf config) state {
 					int(age.Seconds()), age, check.RunInterval)
 				outputCh <- checkResult{
 					name:          check.name,
-					output:        lastCheckState.output,
+					output:        lastCheckState.Output,
 					epoch:         lastCheckState.Epoch,
 					status:        lastCheckState.Status,
-					federatedFrom: lastCheckState.federatedFrom,
+					federatedFrom: lastCheckState.FederatedFrom,
 				}
 				inputWg.Done()
 				continue

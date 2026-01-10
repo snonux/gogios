@@ -14,13 +14,13 @@ import (
 type checkState struct {
 	Status        nagiosCode
 	PrevStatus    nagiosCode
-	Epoch         int64 `json:"Epoch,omitempty"`
-	output        string
-	federatedFrom string
+	Epoch         int64  `json:"Epoch,omitempty"`
+	Output        string `json:"Output,omitempty"`
+	FederatedFrom string `json:"FederatedFrom,omitempty"`
 }
 
 func (cs checkState) federated() bool {
-	return cs.federatedFrom != ""
+	return cs.FederatedFrom != ""
 }
 
 func (cs checkState) changed() bool {
@@ -62,7 +62,7 @@ func newState(conf config) (state, error) {
 
 	var obsolete []string
 	for name := range s.checks {
-		if _, ok := conf.Checks[name]; !ok {
+		if _, ok := conf.Checks[name]; !ok && !strings.HasPrefix(name, "Prometheus") {
 			obsolete = append(obsolete, name)
 		}
 	}
@@ -240,10 +240,10 @@ func (s state) reportBy(sb *strings.Builder, showStatusChange, isStaleReport boo
 		sb.WriteString(": ")
 		sb.WriteString(name)
 		sb.WriteString(": ")
-		sb.WriteString(cs.output)
+		sb.WriteString(cs.Output)
 		if cs.federated() {
 			sb.WriteString(" [federated from ")
-			sb.WriteString(cs.federatedFrom)
+			sb.WriteString(cs.FederatedFrom)
 			sb.WriteString("]")
 		}
 

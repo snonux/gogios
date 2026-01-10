@@ -202,8 +202,8 @@ func TestMergePrometheusAlertsWatchdogFiring(t *testing.T) {
 		t.Errorf("expected Watchdog status OK, got %v", watchdog.Status)
 	}
 
-	if !strings.Contains(watchdog.output, "working properly") {
-		t.Errorf("expected working properly message, got: %s", watchdog.output)
+	if !strings.Contains(watchdog.Output, "working properly") {
+		t.Errorf("expected working properly message, got: %s", watchdog.Output)
 	}
 
 	// Verify other alerts are still processed
@@ -255,7 +255,7 @@ func TestMergePrometheusAlertsWatchdogNotFiring(t *testing.T) {
 		t.Errorf("expected Watchdog status CRITICAL, got %v", watchdog.Status)
 	}
 
-	if !strings.Contains(watchdog.output, "not firing") {
-		t.Errorf("expected not firing message, got: %s", watchdog.output)
+	if !strings.Contains(watchdog.Output, "not firing") {
+		t.Errorf("expected not firing message, got: %s", watchdog.Output)
 	}
 }
