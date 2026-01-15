@@ -83,13 +83,10 @@ func Openbsd() error {
 // BuildOpenbsd builds the gogios binary for OpenBSD.
 func BuildOpenbsd() error {
 	fmt.Println("Building for OpenBSD...")
-	if err := os.Setenv("GOOS", "openbsd"); err != nil {
-		return err
-	}
-	if err := os.Setenv("GOARCH", "amd64"); err != nil {
-		return err
-	}
+	env := os.Environ()
+	env = append(env, "GOOS=openbsd", "GOARCH=amd64")
 	cmd := exec.Command("go", "build", "-o", "gogios", "cmd/gogios/main.go")
+	cmd.Env = env
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	return cmd.Run()

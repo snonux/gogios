@@ -73,3 +73,5 @@ Run tests before committing changes.
 For best practices also follow ~/git/conf/snippets/go/go-projects/go-projects.md if present.
 
 For deployment and testing procedures, see ~/Notes/snippets/go-projects/gogios-deploy-and-test.md
+
+For alert troubleshooting and common issues, see ~/Notes/snippets/go-projects/gogios-troubleshoot-alert.md

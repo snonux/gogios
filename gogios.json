@@ -1,6 +1,7 @@
 {
   "EmailTo": "paul",
   "EmailFrom": "gogios@buetow.org",
+  "HTMLStatusFile": "./status.html",
   "CheckTimeoutS": 10,
   "CheckConcurrency": 2,
   "Checks": {
