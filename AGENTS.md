@@ -71,3 +71,5 @@ Tests exist in `internal/` with the `*_test.go` naming convention:
 Run tests before committing changes.
 
 For best practices also follow ~/git/conf/snippets/go/go-projects/go-projects.md if present.
+
+For deployment and testing procedures, see ~/Notes/snippets/go-projects/gogios-deploy-and-test.md
