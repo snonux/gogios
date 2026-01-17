@@ -109,6 +109,18 @@ func (s state) htmlReport(subject string) string {
 	}
 	sb.WriteString(`</div>` + "\n\n")
 
+	// OK checks section
+	sb.WriteString(`<div class="section">` + "\n")
+	sb.WriteString(`<h2>OK checks</h2>` + "\n")
+	if numOK == 0 {
+		sb.WriteString(`<p>There are no OK checks...</p>` + "\n")
+	} else {
+		s.htmlReportBy(&sb, false, false, func(cs checkState) bool {
+			return cs.Status == nagiosOk
+		})
+	}
+	sb.WriteString(`</div>` + "\n\n")
+
 	sb.WriteString(htmlFooter())
 
 	return sb.String()
