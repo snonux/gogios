@@ -130,7 +130,9 @@ func (s state) persist() error {
 	return os.WriteFile(s.stateFile, jsonData, os.ModePerm)
 }
 
-func (s state) report(renotify, force bool) (string, string, bool) {
+// report generates the notification email content.
+// statusPageURL is included as a link to the HTML status page.
+func (s state) report(renotify, force bool, statusPageURL string) (string, string, bool) {
 	var sb strings.Builder
 
 	sb.WriteString("This is the recent Gogios report!\n\n")
@@ -153,6 +155,10 @@ func (s state) report(renotify, force bool) (string, string, bool) {
 	if numStale == 0 {
 		sb.WriteString("There are no stale alerts...\n\n")
 	}
+
+	sb.WriteString("# Status page:\n\n")
+	sb.WriteString(statusPageURL)
+	sb.WriteString("\n\n")
 
 	sb.WriteString("Have a nice day!\n")
 

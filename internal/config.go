@@ -16,6 +16,7 @@ type config struct {
 	StateDir           string `json:"StateDir,omitempty"`
 	HTMLStatusFile     string `json:"HTMLStatusFile,omitempty"` // Path to HTML status file
 	HTMLDisable        bool   `json:"HTMLDisable,omitempty"`    // Disable HTML status page generation
+	StatusPageURL      string `json:"StatusPageURL,omitempty"`  // URL to the HTML status page for email notifications
 	CheckTimeoutS      int
 	CheckConcurrency   int
 	StaleThreshold     int      `json:"StaleThreshold,omitempty"`
@@ -69,6 +70,12 @@ func newConfig(configFile string) (config, error) {
 	if !conf.HTMLDisable && conf.HTMLStatusFile == "" {
 		conf.HTMLStatusFile = "/var/www/htdocs/buetow.org/self/gogios/index.html"
 		log.Println("Set HTMLStatusFile to " + conf.HTMLStatusFile)
+	}
+
+	// Default URL for the status page link in email notifications
+	if conf.StatusPageURL == "" {
+		conf.StatusPageURL = "https://gogios.buetow.org"
+		log.Println("Set StatusPageURL to " + conf.StatusPageURL)
 	}
 
 	return conf, nil
