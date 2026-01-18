@@ -173,10 +173,11 @@ func (s state) htmlReportUnhandledContent(sb *strings.Builder) {
 }
 
 // htmlReportStaleAlerts generates HTML for stale checks.
-// Mirrors state.reportStaleAlerts() from state.go:216-220.
+// Only reports stale alerts that are not OK, since stale OK alerts aren't concerning.
+// Mirrors state.reportStaleAlerts() from state.go.
 func (s state) htmlReportStaleAlerts(sb *strings.Builder) int {
 	return s.htmlReportBy(sb, false, true, func(cs checkState) bool {
-		return cs.Epoch < s.staleEpoch
+		return cs.Epoch < s.staleEpoch && cs.Status != nagiosOk
 	})
 }
 
@@ -228,11 +229,11 @@ func (s state) htmlReportBy(sb *strings.Builder, showStatusChange, isStaleReport
 	return
 }
 
-// countStale counts the number of stale checks.
+// countStale counts the number of stale checks (excluding OK status).
 // Helper function for generating summary counts.
 func (s state) countStale() int {
 	return s.countBy(func(cs checkState) bool {
-		return cs.Epoch < s.staleEpoch
+		return cs.Epoch < s.staleEpoch && cs.Status != nagiosOk
 	})
 }
 

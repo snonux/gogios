@@ -214,8 +214,9 @@ func (s state) reportUnhandled(sb *strings.Builder) (numCriticals, numWarnings,
 }
 
 func (s state) reportStaleAlerts(sb *strings.Builder) int {
+	// Only report stale alerts that are not OK, since stale OK alerts aren't concerning
 	return s.reportBy(sb, false, true, func(cs checkState) bool {
-		return cs.Epoch < s.staleEpoch
+		return cs.Epoch < s.staleEpoch && cs.Status != nagiosOk
 	})
 }
 
