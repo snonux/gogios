@@ -7,6 +7,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -65,7 +66,8 @@ func mergePrometheusAlerts(ctx context.Context, state state, conf config) state 
 		state.update(cs)
 	}
 
-	// Check if Watchdog alert is firing
+	// Track currently firing alerts to clear resolved ones later
+	firingAlerts := make(map[string]bool)
 	watchdogFiring := false
 
 	for _, alert := range alerts {
@@ -75,6 +77,7 @@ func mergePrometheusAlerts(ctx context.Context, state state, conf config) state 
 		if alertname == "Watchdog" {
 			if alert.State == "firing" {
 				watchdogFiring = true
+				firingAlerts["Prometheus: Watchdog"] = true
 				// Watchdog is firing as expected, treat as OK
 				cs := checkResult{
 					name:   "Prometheus: Watchdog",
@@ -92,6 +95,7 @@ func mergePrometheusAlerts(ctx context.Context, state state, conf config) state 
 		}
 
 		name := fmt.Sprintf("Prometheus: %s", alertname)
+		firingAlerts[name] = true
 		severity := alert.Labels["severity"]
 		description := alert.Annotations["summary"]
 		if description == "" {
@@ -117,6 +121,7 @@ func mergePrometheusAlerts(ctx context.Context, state state, conf config) state 
 
 	// If Watchdog is not firing, alert as critical
 	if !watchdogFiring {
+		firingAlerts["Prometheus: Watchdog"] = true
 		cs := checkResult{
 			name:   "Prometheus: Watchdog",
 			output: "CRITICAL [none]: Watchdog alert is not firing, Alertmanager may not be working",
@@ -126,7 +131,27 @@ func mergePrometheusAlerts(ctx context.Context, state state, conf config) state 
 		state.update(cs)
 	}
 
+	// Clear any Prometheus alerts that are no longer firing
+	clearResolvedPrometheusAlerts(state, firingAlerts)
+
 	return state
+}
+
+// clearResolvedPrometheusAlerts removes Prometheus alerts from state that are
+// no longer firing. This prevents stale alerts from accumulating.
+func clearResolvedPrometheusAlerts(state state, firingAlerts map[string]bool) {
+	const prometheusPrefix = "Prometheus: "
+	for name := range state.checks {
+		// Skip non-Prometheus alerts and the connection status check
+		if !strings.HasPrefix(name, prometheusPrefix) || name == "Prometheus alerts" {
+			continue
+		}
+		// If this alert is not currently firing, remove it from state
+		if !firingAlerts[name] {
+			delete(state.checks, name)
+			log.Printf("Cleared resolved Prometheus alert: %s", name)
+		}
+	}
 }
 
 func fetchPrometheusAlerts(ctx context.Context, hosts []string, timeout time.Duration) ([]prometheusAlert, string, error) {

@@ -75,9 +75,12 @@ func Test() error {
 }
 
 // Openbsd builds and deploys the gogios binary for OpenBSD.
+// Runs sequentially to ensure build completes before deploy.
 func Openbsd() error {
-	mg.Deps(BuildOpenbsd, DeployOpenbsd)
-	return nil
+	if err := BuildOpenbsd(); err != nil {
+		return err
+	}
+	return DeployOpenbsd()
 }
 
 // BuildOpenbsd builds the gogios binary for OpenBSD.
