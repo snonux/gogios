@@ -58,29 +58,24 @@ func persistHTMLReport(state state, subject string, conf config) error {
 
 // htmlReport generates the complete HTML status page.
 // Mirrors state.report() pattern from state.go:133-163.
-// Note: HTML report shows full state without suppression in main sections for visibility,
-// but includes a dedicated "Suppressed alerts" section showing which checks are muted.
+// Suppressed checks are excluded from main sections but shown in "Suppressed alerts" section.
 func (s state) htmlReport(subject string, conf config) string {
 	var sb strings.Builder
 
-	// Use empty config for main sections so no checks are suppressed.
-	// The HTML status page shows full state for visibility.
-	emptyConf := config{}
-
-	// Calculate counts for header summary (without generating HTML yet)
-	numCriticals := s.countBy(emptyConf, func(cs checkState) bool {
+	// Calculate counts for header summary (respecting suppression)
+	numCriticals := s.countBy(conf, func(cs checkState) bool {
 		return cs.Status == nagiosCritical
 	})
-	numWarnings := s.countBy(emptyConf, func(cs checkState) bool {
+	numWarnings := s.countBy(conf, func(cs checkState) bool {
 		return cs.Status == nagiosWarning
 	})
-	numUnknown := s.countBy(emptyConf, func(cs checkState) bool {
+	numUnknown := s.countBy(conf, func(cs checkState) bool {
 		return cs.Status == nagiosUnknown
 	})
-	numOK := s.countBy(emptyConf, func(cs checkState) bool {
+	numOK := s.countBy(conf, func(cs checkState) bool {
 		return cs.Status == nagiosOk
 	})
-	numStale := s.countStale(emptyConf)
+	numStale := s.countStale(conf)
 	numSuppressed := s.countSuppressed(conf)
 
 	// Write HTML header with summary
@@ -89,7 +84,7 @@ func (s state) htmlReport(subject string, conf config) string {
 	// Alerts with status changed section
 	sb.WriteString(`<div class="section">` + "\n")
 	sb.WriteString(`<h2>Alerts with status changed</h2>` + "\n")
-	changed := s.htmlReportChanged(&sb)
+	changed := s.htmlReportChanged(&sb, conf)
 	if !changed {
 		sb.WriteString(`<p>There were no status changes...</p>` + "\n")
 	}
@@ -100,7 +95,7 @@ func (s state) htmlReport(subject string, conf config) string {
 	sb.WriteString(`<h2>Unhandled alerts</h2>` + "\n")
 	hasUnhandled := (numCriticals + numWarnings + numUnknown) > 0
 	if hasUnhandled {
-		s.htmlReportUnhandledContent(&sb)
+		s.htmlReportUnhandledContent(&sb, conf)
 	} else {
 		sb.WriteString(`<p>There are no unhandled alerts...</p>` + "\n")
 	}
@@ -112,7 +107,7 @@ func (s state) htmlReport(subject string, conf config) string {
 	if numStale == 0 {
 		sb.WriteString(`<p>There are no stale alerts...</p>` + "\n")
 	} else {
-		s.htmlReportStaleAlerts(&sb)
+		s.htmlReportStaleAlerts(&sb, conf)
 	}
 	sb.WriteString(`</div>` + "\n\n")
 
@@ -132,7 +127,7 @@ func (s state) htmlReport(subject string, conf config) string {
 	if numOK == 0 {
 		sb.WriteString(`<p>There are no OK checks...</p>` + "\n")
 	} else {
-		s.htmlReportBy(&sb, false, false, func(cs checkState) bool {
+		s.htmlReportBy(&sb, false, false, conf, func(cs checkState) bool {
 			return cs.Status == nagiosOk
 		})
 	}
@@ -144,27 +139,27 @@ func (s state) htmlReport(subject string, conf config) string {
 }
 
 // htmlReportChanged generates HTML for checks with status changes.
-// Mirrors state.reportChanged() from state.go:166-192.
-func (s state) htmlReportChanged(sb *strings.Builder) (changed bool) {
-	if 0 < s.htmlReportBy(sb, true, false, func(cs checkState) bool {
+// Mirrors state.reportChanged() from state.go.
+func (s state) htmlReportChanged(sb *strings.Builder, conf config) (changed bool) {
+	if 0 < s.htmlReportBy(sb, true, false, conf, func(cs checkState) bool {
 		return cs.Status == nagiosCritical && cs.changed()
 	}) {
 		changed = true
 	}
 
-	if 0 < s.htmlReportBy(sb, true, false, func(cs checkState) bool {
+	if 0 < s.htmlReportBy(sb, true, false, conf, func(cs checkState) bool {
 		return cs.Status == nagiosWarning && cs.changed()
 	}) {
 		changed = true
 	}
 
-	if 0 < s.htmlReportBy(sb, true, false, func(cs checkState) bool {
+	if 0 < s.htmlReportBy(sb, true, false, conf, func(cs checkState) bool {
 		return cs.Status == nagiosUnknown && cs.changed()
 	}) {
 		changed = true
 	}
 
-	if 0 < s.htmlReportBy(sb, true, false, func(cs checkState) bool {
+	if 0 < s.htmlReportBy(sb, true, false, conf, func(cs checkState) bool {
 		return cs.Status == nagiosOk && cs.changed()
 	}) {
 		changed = true
@@ -174,17 +169,17 @@ func (s state) htmlReportChanged(sb *strings.Builder) (changed bool) {
 }
 
 // htmlReportUnhandledContent generates HTML content for unhandled alerts section.
-// Mirrors state.reportUnhandled() from state.go:194-214.
-func (s state) htmlReportUnhandledContent(sb *strings.Builder) {
-	s.htmlReportBy(sb, false, false, func(cs checkState) bool {
+// Mirrors state.reportUnhandled() from state.go.
+func (s state) htmlReportUnhandledContent(sb *strings.Builder, conf config) {
+	s.htmlReportBy(sb, false, false, conf, func(cs checkState) bool {
 		return cs.Status == nagiosCritical
 	})
 
-	s.htmlReportBy(sb, false, false, func(cs checkState) bool {
+	s.htmlReportBy(sb, false, false, conf, func(cs checkState) bool {
 		return cs.Status == nagiosWarning
 	})
 
-	s.htmlReportBy(sb, false, false, func(cs checkState) bool {
+	s.htmlReportBy(sb, false, false, conf, func(cs checkState) bool {
 		return cs.Status == nagiosUnknown
 	})
 }
@@ -192,8 +187,8 @@ func (s state) htmlReportUnhandledContent(sb *strings.Builder) {
 // htmlReportStaleAlerts generates HTML for stale checks.
 // Only reports stale alerts that are not OK, since stale OK alerts aren't concerning.
 // Mirrors state.reportStaleAlerts() from state.go.
-func (s state) htmlReportStaleAlerts(sb *strings.Builder) int {
-	return s.htmlReportBy(sb, false, true, func(cs checkState) bool {
+func (s state) htmlReportStaleAlerts(sb *strings.Builder, conf config) int {
+	return s.htmlReportBy(sb, false, true, conf, func(cs checkState) bool {
 		return cs.Epoch < s.staleEpoch && cs.Status != nagiosOk
 	})
 }
@@ -235,9 +230,10 @@ func (s state) countSuppressed(conf config) (count int) {
 }
 
 // htmlReportBy is the generic HTML generator for check items.
-// Mirrors state.reportBy() from state.go:222-262 but outputs HTML.
+// Mirrors state.reportBy() from state.go but outputs HTML.
+// Checks that are suppressed via OnlyIfNotExists are excluded.
 func (s state) htmlReportBy(sb *strings.Builder, showStatusChange, isStaleReport bool,
-	filter func(cs checkState) bool,
+	conf config, filter func(cs checkState) bool,
 ) (count int) {
 	for name, cs := range s.checks {
 		if !filter(cs) {
@@ -245,6 +241,9 @@ func (s state) htmlReportBy(sb *strings.Builder, showStatusChange, isStaleReport
 		}
 		if !isStaleReport && cs.Epoch < s.staleEpoch {
 			continue // skip stale checks in non-stale report
+		}
+		if isCheckSuppressed(name, conf) {
+			continue // skip suppressed checks
 		}
 		count++
 

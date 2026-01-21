@@ -107,7 +107,7 @@ func TestHtmlReportBy(t *testing.T) {
 
 	// Test critical filter
 	var sb strings.Builder
-	count := s.htmlReportBy(&sb, false, false, func(cs checkState) bool {
+	count := s.htmlReportBy(&sb, false, false, config{}, func(cs checkState) bool {
 		return cs.Status == nagiosCritical
 	})
 
@@ -128,7 +128,7 @@ func TestHtmlReportBy(t *testing.T) {
 
 	// Test status change filter
 	sb.Reset()
-	count = s.htmlReportBy(&sb, true, false, func(cs checkState) bool {
+	count = s.htmlReportBy(&sb, true, false, config{}, func(cs checkState) bool {
 		return cs.Status == nagiosCritical && cs.changed()
 	})
 
@@ -168,7 +168,7 @@ func TestHtmlReportChanged(t *testing.T) {
 	}
 
 	var sb strings.Builder
-	changed := s.htmlReportChanged(&sb)
+	changed := s.htmlReportChanged(&sb, config{})
 
 	if !changed {
 		t.Error("htmlReportChanged() returned false, want true")
@@ -270,7 +270,7 @@ func TestHtmlEscaping(t *testing.T) {
 	}
 
 	var sb strings.Builder
-	s.htmlReportBy(&sb, false, false, func(cs checkState) bool {
+	s.htmlReportBy(&sb, false, false, config{}, func(cs checkState) bool {
 		return cs.Status == nagiosCritical
 	})
 
@@ -369,7 +369,7 @@ func TestFederatedChecks(t *testing.T) {
 	}
 
 	var sb strings.Builder
-	s.htmlReportBy(&sb, false, false, func(cs checkState) bool {
+	s.htmlReportBy(&sb, false, false, config{}, func(cs checkState) bool {
 		return cs.Status == nagiosCritical
 	})
 
