@@ -21,9 +21,11 @@ type config struct {
 	CheckConcurrency   int
 	StaleThreshold     int      `json:"StaleThreshold,omitempty"`
 	Federated          []string `json:"Federated,omitempty"` // TODO: Document this option
-	PrometheusHosts    []string `json:"PrometheusHosts,omitempty"`
-	PrometheusTimeoutS int      `json:"PrometheusTimeoutS,omitempty"`
-	Checks             map[string]check
+	PrometheusHosts               []string `json:"PrometheusHosts,omitempty"`
+	PrometheusTimeoutS            int      `json:"PrometheusTimeoutS,omitempty"`
+	PrometheusOnlyIfNotExists     string   `json:"PrometheusOnlyIfNotExists,omitempty"`     // Suppress Prometheus alerts if this file exists and is recent
+	PrometheusOnlyIfNotExistsMaxS int      `json:"PrometheusOnlyIfNotExistsMaxS,omitempty"` // Max age in seconds for suppression file (default 86400)
+	Checks                        map[string]check
 }
 
 func newConfig(configFile string) (config, error) {
@@ -65,6 +67,10 @@ func newConfig(configFile string) (config, error) {
 
 	if conf.PrometheusTimeoutS == 0 {
 		conf.PrometheusTimeoutS = 2 // Default to 2 seconds
+	}
+
+	if conf.PrometheusOnlyIfNotExistsMaxS == 0 {
+		conf.PrometheusOnlyIfNotExistsMaxS = 86400 // Default to 24 hours
 	}
 
 	if !conf.HTMLDisable && conf.HTMLStatusFile == "" {

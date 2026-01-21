@@ -30,7 +30,7 @@ func Run(ctx context.Context, configFile string, renotify, force bool) {
 		notifyError(conf, err)
 	}
 
-	subject, body, doNotify := state.report(renotify, force, conf.StatusPageURL)
+	subject, body, doNotify := state.report(renotify, force, conf.StatusPageURL, conf)
 	if doNotify {
 		if err := notify(conf, subject, body); err != nil {
 			log.Println("error:", err)

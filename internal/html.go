@@ -40,7 +40,7 @@ func persistHTMLReport(state state, subject string, conf config) error {
 	}
 	defer f.Close()
 
-	htmlContent := state.htmlReport(subject)
+	htmlContent := state.htmlReport(subject, conf)
 	if _, err = f.WriteString(htmlContent); err != nil {
 		log.Println("debug: error writing HTML:", err)
 		return fmt.Errorf("failed to write HTML: %w", err)
@@ -58,23 +58,30 @@ func persistHTMLReport(state state, subject string, conf config) error {
 
 // htmlReport generates the complete HTML status page.
 // Mirrors state.report() pattern from state.go:133-163.
-func (s state) htmlReport(subject string) string {
+// Note: HTML report shows full state without suppression in main sections for visibility,
+// but includes a dedicated "Suppressed alerts" section showing which checks are muted.
+func (s state) htmlReport(subject string, conf config) string {
 	var sb strings.Builder
 
+	// Use empty config for main sections so no checks are suppressed.
+	// The HTML status page shows full state for visibility.
+	emptyConf := config{}
+
 	// Calculate counts for header summary (without generating HTML yet)
-	numCriticals := s.countBy(func(cs checkState) bool {
+	numCriticals := s.countBy(emptyConf, func(cs checkState) bool {
 		return cs.Status == nagiosCritical
 	})
-	numWarnings := s.countBy(func(cs checkState) bool {
+	numWarnings := s.countBy(emptyConf, func(cs checkState) bool {
 		return cs.Status == nagiosWarning
 	})
-	numUnknown := s.countBy(func(cs checkState) bool {
+	numUnknown := s.countBy(emptyConf, func(cs checkState) bool {
 		return cs.Status == nagiosUnknown
 	})
-	numOK := s.countBy(func(cs checkState) bool {
+	numOK := s.countBy(emptyConf, func(cs checkState) bool {
 		return cs.Status == nagiosOk
 	})
-	numStale := s.countStale()
+	numStale := s.countStale(emptyConf)
+	numSuppressed := s.countSuppressed(conf)
 
 	// Write HTML header with summary
 	sb.WriteString(htmlHeader(subject, numCriticals, numWarnings, numUnknown, numStale, numOK))
@@ -106,6 +113,16 @@ func (s state) htmlReport(subject string) string {
 		sb.WriteString(`<p>There are no stale alerts...</p>` + "\n")
 	} else {
 		s.htmlReportStaleAlerts(&sb)
+	}
+	sb.WriteString(`</div>` + "\n\n")
+
+	// Suppressed alerts section
+	sb.WriteString(`<div class="section">` + "\n")
+	sb.WriteString(`<h2>Suppressed alerts</h2>` + "\n")
+	if numSuppressed == 0 {
+		sb.WriteString(`<p>There are no suppressed alerts...</p>` + "\n")
+	} else {
+		s.htmlReportSuppressed(&sb, conf)
 	}
 	sb.WriteString(`</div>` + "\n\n")
 
@@ -181,6 +198,42 @@ func (s state) htmlReportStaleAlerts(sb *strings.Builder) int {
 	})
 }
 
+// htmlReportSuppressed generates HTML for suppressed checks.
+// Shows which checks are currently muted via OnlyIfNotExists for visibility.
+func (s state) htmlReportSuppressed(sb *strings.Builder, conf config) (count int) {
+	for name, cs := range s.checks {
+		if !isCheckSuppressed(name, conf) {
+			continue
+		}
+		count++
+
+		sb.WriteString(`<div class="check-item">` + "\n")
+		sb.WriteString(htmlStatusBadge(nagiosCode(cs.Status)))
+		sb.WriteString(": ")
+		sb.WriteString(html.EscapeString(name))
+		sb.WriteString(": ")
+		sb.WriteString(html.EscapeString(cs.Output))
+		if cs.federated() {
+			sb.WriteString(" [federated from ")
+			sb.WriteString(html.EscapeString(cs.FederatedFrom))
+			sb.WriteString("]")
+		}
+		sb.WriteString(` <span class="UNKNOWN">[SUPPRESSED]</span>`)
+		sb.WriteString("\n</div>\n")
+	}
+	return
+}
+
+// countSuppressed counts the number of suppressed checks.
+func (s state) countSuppressed(conf config) (count int) {
+	for name := range s.checks {
+		if isCheckSuppressed(name, conf) {
+			count++
+		}
+	}
+	return
+}
+
 // htmlReportBy is the generic HTML generator for check items.
 // Mirrors state.reportBy() from state.go:222-262 but outputs HTML.
 func (s state) htmlReportBy(sb *strings.Builder, showStatusChange, isStaleReport bool,
@@ -231,8 +284,8 @@ func (s state) htmlReportBy(sb *strings.Builder, showStatusChange, isStaleReport
 
 // countStale counts the number of stale checks (excluding OK status).
 // Helper function for generating summary counts.
-func (s state) countStale() int {
-	return s.countBy(func(cs checkState) bool {
+func (s state) countStale(conf config) int {
+	return s.countBy(conf, func(cs checkState) bool {
 		return cs.Epoch < s.staleEpoch && cs.Status != nagiosOk
 	})
 }

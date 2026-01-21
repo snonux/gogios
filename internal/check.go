@@ -9,13 +9,15 @@ import (
 )
 
 type check struct {
-	Plugin        string
-	Args          []string
-	DependsOn     []string `json:"DependsOn,omitempty"`
-	Retries       int      `json:"Retries,omitempty"`
-	RetryInterval int      `json:"RetryInterval,omitempty"`
-	RunInterval   int      `json:"RunInterval,omitempty"`
-	RandomSpread  int      `json:"RandomSpread,omitempty"`
+	Plugin               string
+	Args                 []string
+	DependsOn            []string `json:"DependsOn,omitempty"`
+	Retries              int      `json:"Retries,omitempty"`
+	RetryInterval        int      `json:"RetryInterval,omitempty"`
+	RunInterval          int      `json:"RunInterval,omitempty"`
+	RandomSpread         int      `json:"RandomSpread,omitempty"`
+	OnlyIfNotExists      string   `json:"OnlyIfNotExists,omitempty"`      // Suppress alerts if this file exists and is recent
+	OnlyIfNotExistsMaxS  int      `json:"OnlyIfNotExistsMaxS,omitempty"`  // Max age in seconds for suppression file (uses global default if 0)
 }
 
 type namedCheck struct {

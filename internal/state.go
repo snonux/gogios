@@ -132,28 +132,35 @@ func (s state) persist() error {
 
 // report generates the notification email content.
 // statusPageURL is included as a link to the HTML status page.
-func (s state) report(renotify, force bool, statusPageURL string) (string, string, bool) {
+// conf is used to determine which checks should be suppressed from the report.
+func (s state) report(renotify, force bool, statusPageURL string, conf config) (string, string, bool) {
 	var sb strings.Builder
 
 	sb.WriteString("This is the recent Gogios report!\n\n")
 
 	sb.WriteString("# Alerts with status changed:\n\n")
-	changed := s.reportChanged(&sb)
+	changed := s.reportChanged(&sb, conf)
 	if !changed {
 		sb.WriteString("There were no status changes...\n\n")
 	}
 
 	sb.WriteString("# Unhandled alerts:\n\n")
-	numCriticals, numWarnings, numUnknown, numOK := s.reportUnhandled(&sb)
+	numCriticals, numWarnings, numUnknown, numOK := s.reportUnhandled(&sb, conf)
 	hasUnhandled := (numCriticals + numWarnings + numUnknown) > 0
 	if !hasUnhandled {
 		sb.WriteString("There are no unhandled alerts...\n\n")
 	}
 
 	sb.WriteString("# Stale alerts:\n\n")
-	numStale := s.reportStaleAlerts(&sb)
+	numStale := s.reportStaleAlerts(&sb, conf)
 	if numStale == 0 {
 		sb.WriteString("There are no stale alerts...\n\n")
+	}
+
+	sb.WriteString("# Suppressed alerts:\n\n")
+	numSuppressed := s.reportSuppressed(&sb, conf)
+	if numSuppressed == 0 {
+		sb.WriteString("There are no suppressed alerts...\n\n")
 	}
 
 	sb.WriteString("# Status page:\n\n")
@@ -169,26 +176,26 @@ func (s state) report(renotify, force bool, statusPageURL string) (string, strin
 	return subject, sb.String(), doNotify
 }
 
-func (s state) reportChanged(sb *strings.Builder) (changed bool) {
-	if 0 < s.reportBy(sb, true, false, func(cs checkState) bool {
+func (s state) reportChanged(sb *strings.Builder, conf config) (changed bool) {
+	if 0 < s.reportBy(sb, true, false, conf, func(cs checkState) bool {
 		return cs.Status == nagiosCritical && cs.changed()
 	}) {
 		changed = true
 	}
 
-	if 0 < s.reportBy(sb, true, false, func(cs checkState) bool {
+	if 0 < s.reportBy(sb, true, false, conf, func(cs checkState) bool {
 		return cs.Status == nagiosWarning && cs.changed()
 	}) {
 		changed = true
 	}
 
-	if 0 < s.reportBy(sb, true, false, func(cs checkState) bool {
+	if 0 < s.reportBy(sb, true, false, conf, func(cs checkState) bool {
 		return cs.Status == nagiosUnknown && cs.changed()
 	}) {
 		changed = true
 	}
 
-	if 0 < s.reportBy(sb, true, false, func(cs checkState) bool {
+	if 0 < s.reportBy(sb, true, false, conf, func(cs checkState) bool {
 		return cs.Status == nagiosOk && cs.changed()
 	}) {
 		changed = true
@@ -197,37 +204,68 @@ func (s state) reportChanged(sb *strings.Builder) (changed bool) {
 	return
 }
 
-func (s state) reportUnhandled(sb *strings.Builder) (numCriticals, numWarnings,
+func (s state) reportUnhandled(sb *strings.Builder, conf config) (numCriticals, numWarnings,
 	numUnknown, numOK int,
 ) {
-	numCriticals = s.reportBy(sb, false, false, func(cs checkState) bool {
+	numCriticals = s.reportBy(sb, false, false, conf, func(cs checkState) bool {
 		return cs.Status == nagiosCritical
 	})
 
-	numWarnings = s.reportBy(sb, false, false, func(cs checkState) bool {
+	numWarnings = s.reportBy(sb, false, false, conf, func(cs checkState) bool {
 		return cs.Status == nagiosWarning
 	})
 
-	numUnknown = s.reportBy(sb, false, false, func(cs checkState) bool {
+	numUnknown = s.reportBy(sb, false, false, conf, func(cs checkState) bool {
 		return cs.Status == nagiosUnknown
 	})
 
-	numOK = s.countBy(func(cs checkState) bool {
+	numOK = s.countBy(conf, func(cs checkState) bool {
 		return cs.Status == nagiosOk
 	})
 
 	return
 }
 
-func (s state) reportStaleAlerts(sb *strings.Builder) int {
+func (s state) reportStaleAlerts(sb *strings.Builder, conf config) int {
 	// Only report stale alerts that are not OK, since stale OK alerts aren't concerning
-	return s.reportBy(sb, false, true, func(cs checkState) bool {
+	return s.reportBy(sb, false, true, conf, func(cs checkState) bool {
 		return cs.Epoch < s.staleEpoch && cs.Status != nagiosOk
 	})
 }
 
+// reportSuppressed lists all checks that are currently suppressed via OnlyIfNotExists.
+// This provides visibility into which alerts are being muted during maintenance windows.
+func (s state) reportSuppressed(sb *strings.Builder, conf config) (count int) {
+	for name, cs := range s.checks {
+		if !isCheckSuppressed(name, conf) {
+			continue
+		}
+		count++
+
+		sb.WriteString(nagiosCode(cs.Status).Str())
+		sb.WriteString(": ")
+		sb.WriteString(name)
+		sb.WriteString(": ")
+		sb.WriteString(cs.Output)
+		if cs.federated() {
+			sb.WriteString(" [federated from ")
+			sb.WriteString(cs.FederatedFrom)
+			sb.WriteString("]")
+		}
+		sb.WriteString(" [SUPPRESSED]")
+		sb.WriteString("\n")
+	}
+
+	if count > 0 {
+		sb.WriteString("\n")
+	}
+	return
+}
+
+// reportBy iterates over checks matching the filter and writes them to sb.
+// Checks that are suppressed via OnlyIfNotExists are excluded from the report.
 func (s state) reportBy(sb *strings.Builder, showStatusChange, isStaleReport bool,
-	filter func(cs checkState) bool,
+	conf config, filter func(cs checkState) bool,
 ) (count int) {
 	for name, cs := range s.checks {
 		if !filter(cs) {
@@ -235,6 +273,9 @@ func (s state) reportBy(sb *strings.Builder, showStatusChange, isStaleReport boo
 		}
 		if !isStaleReport && cs.Epoch < s.staleEpoch {
 			continue // skip stale checks in non-stale report
+		}
+		if isCheckSuppressed(name, conf) {
+			continue // skip suppressed checks
 		}
 		count++
 
@@ -268,8 +309,12 @@ func (s state) reportBy(sb *strings.Builder, showStatusChange, isStaleReport boo
 	return
 }
 
-func (s state) countBy(filter func(cs checkState) bool) (count int) {
-	for _, cs := range s.checks {
+// countBy counts checks matching the filter, excluding suppressed checks.
+func (s state) countBy(conf config, filter func(cs checkState) bool) (count int) {
+	for name, cs := range s.checks {
+		if isCheckSuppressed(name, conf) {
+			continue // skip suppressed checks
+		}
 		if filter(cs) {
 			count++
 		}

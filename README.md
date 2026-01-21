@@ -197,6 +197,61 @@ Gogios includes special handling for the Prometheus Watchdog alert, which is typ
 
 This ensures you are immediately notified if Alertmanager stops working, preventing a situation where alerts might not be delivered properly.
 
+### Alert Suppression (OnlyIfNotExists)
+
+Gogios supports suppressing alerts based on the presence of a file. This is useful for planned maintenance windows where you don't want to receive alerts for expected downtime (e.g., shutting down a Kubernetes cluster overnight).
+
+When a suppression file exists and is recent (within the configured max age), alerts matching the suppression rule are completely excluded from email reports - they won't appear in status changed, unhandled alerts, stale alerts sections, or in the subject line counts.
+
+#### Prometheus Alert Suppression
+
+To suppress all Prometheus alerts during maintenance:
+
+```json
+{
+  "PrometheusHosts": ["localhost:9090"],
+  "PrometheusOnlyIfNotExists": "/tmp/k8s_maintenance",
+  "PrometheusOnlyIfNotExistsMaxS": 86400
+}
+```
+
+* `PrometheusOnlyIfNotExists`: Path to the suppression file. When this file exists and is recent, all Prometheus alerts are suppressed from email notifications.
+* `PrometheusOnlyIfNotExistsMaxS`: Maximum age in seconds for the suppression file (default: 86400 = 24 hours). If the file is older than this, alerts are sent normally.
+
+#### Per-Check Alert Suppression
+
+Individual checks can also be suppressed:
+
+```json
+{
+  "Checks": {
+    "Check HTTPS myserver.example.com": {
+      "Plugin": "/usr/local/libexec/nagios/check_http",
+      "Args": ["-H", "myserver.example.com", "-S"],
+      "OnlyIfNotExists": "/tmp/myserver_maintenance",
+      "OnlyIfNotExistsMaxS": 3600
+    }
+  }
+}
+```
+
+* `OnlyIfNotExists`: Path to the suppression file for this specific check.
+* `OnlyIfNotExistsMaxS`: Maximum age in seconds for the suppression file. If set to 0 or omitted, uses the global `PrometheusOnlyIfNotExistsMaxS` value as default.
+
+#### Usage Example
+
+Before starting maintenance:
+```bash
+touch /tmp/k8s_maintenance
+```
+
+After maintenance is complete:
+```bash
+rm /tmp/k8s_maintenance
+```
+
+The file's modification time is checked against the max age, so even if you forget to remove the file, alerts will resume after the configured period.
+
 ## Running Gogios
 
 Now it is time to give it a first run. On OpenBSD, do:
