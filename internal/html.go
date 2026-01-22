@@ -79,7 +79,7 @@ func (s state) htmlReport(subject string, conf config) string {
 	numSuppressed := s.countSuppressed(conf)
 
 	// Write HTML header with summary
-	sb.WriteString(htmlHeader(subject, numCriticals, numWarnings, numUnknown, numStale, numOK))
+	sb.WriteString(htmlHeader(subject, numCriticals, numWarnings, numUnknown, numStale, numSuppressed, numOK))
 
 	// Alerts with status changed section
 	sb.WriteString(`<div class="section">` + "\n")
@@ -292,7 +292,8 @@ func (s state) countStale(conf config) int {
 }
 
 // htmlHeader generates the HTML document header with embedded CSS and status summary.
-func htmlHeader(subject string, numCriticals, numWarnings, numUnknown, numStale, numOK int) string {
+// The summary line format is: C:# W:# U:# S:# SU:# OK:#
+func htmlHeader(subject string, numCriticals, numWarnings, numUnknown, numStale, numSuppressed, numOK int) string {
 	var sb strings.Builder
 
 	sb.WriteString(`<!DOCTYPE html>
@@ -341,7 +342,7 @@ func htmlHeader(subject string, numCriticals, numWarnings, numUnknown, numStale,
     <div class="container">
         <h1>Gogios Status Report</h1>
         <div class="summary">C:`)
-	sb.WriteString(fmt.Sprintf("%d W:%d U:%d S:%d OK:%d", numCriticals, numWarnings, numUnknown, numStale, numOK))
+	sb.WriteString(fmt.Sprintf("%d W:%d U:%d S:%d SU:%d OK:%d", numCriticals, numWarnings, numUnknown, numStale, numSuppressed, numOK))
 	sb.WriteString(`</div>
         <p>Last Updated: `)
 	sb.WriteString(time.Now().Format("2006-01-02 15:04:05 MST"))

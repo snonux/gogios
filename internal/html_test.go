@@ -30,8 +30,8 @@ func TestHtmlStatusBadge(t *testing.T) {
 
 // TestHtmlHeader tests the htmlHeader function.
 func TestHtmlHeader(t *testing.T) {
-	subject := "GOGIOS Report [C:1 W:2 U:3 S:4 OK:5]"
-	result := htmlHeader(subject, 1, 2, 3, 4, 5)
+	subject := "GOGIOS Report [C:1 W:2 U:3 S:4 SU:6 OK:5]"
+	result := htmlHeader(subject, 1, 2, 3, 4, 6, 5)
 
 	// Check that the header contains expected elements
 	expectedElements := []string{
@@ -47,7 +47,7 @@ func TestHtmlHeader(t *testing.T) {
 		".CRITICAL { color: #dc3545; }",
 		".WARNING { color: #ff8c00; }",
 		"Gogios Status Report",
-		"C:1 W:2 U:3 S:4 OK:5",
+		"C:1 W:2 U:3 S:4 SU:6 OK:5",
 		"Last Updated:",
 	}
 
@@ -218,7 +218,7 @@ func TestHtmlReport(t *testing.T) {
 		},
 	}
 
-	subject := "GOGIOS Report [C:1 W:1 U:0 S:1 OK:2]"
+	subject := "GOGIOS Report [C:1 W:1 U:0 S:0 SU:0 OK:2]"
 	result := s.htmlReport(subject, config{})
 
 	// Check that all major sections are present
@@ -247,8 +247,8 @@ func TestHtmlReport(t *testing.T) {
 		t.Error("htmlReport() missing warning_check")
 	}
 
-	// Check status summary
-	if !strings.Contains(result, "C:1 W:1 U:0 S:1 OK:2") {
+	// Check status summary (SU:0 because no suppressed checks in config)
+	if !strings.Contains(result, "C:1 W:1 U:0 S:0 SU:0 OK:2") {
 		t.Error("htmlReport() missing correct status summary")
 	}
 }
@@ -311,7 +311,7 @@ func TestPersistHTMLReport(t *testing.T) {
 		},
 	}
 
-	subject := "GOGIOS Report [C:1 W:0 U:0 S:0 OK:0]"
+	subject := "GOGIOS Report [C:1 W:0 U:0 S:0 SU:0 OK:0]"
 
 	// Test that the function creates the directory and file
 	err := persistHTMLReport(s, subject, conf)
@@ -346,7 +346,7 @@ func TestPersistHTMLReport(t *testing.T) {
 	if !strings.Contains(contentStr, "Test output") {
 		t.Error("HTML file missing check output")
 	}
-	if !strings.Contains(contentStr, "C:1 W:0 U:0 S:0 OK:0") {
+	if !strings.Contains(contentStr, "C:1 W:0 U:0 S:0 SU:0 OK:0") {
 		t.Error("HTML file missing status summary")
 	}
 }
@@ -399,7 +399,7 @@ func TestW3CCompliance(t *testing.T) {
 		},
 	}
 
-	subject := "GOGIOS Report [C:1 W:0 U:0 S:0 OK:0]"
+	subject := "GOGIOS Report [C:1 W:0 U:0 S:0 SU:0 OK:0]"
 	html := s.htmlReport(subject, config{})
 
 	// W3C HTML5 Required Elements

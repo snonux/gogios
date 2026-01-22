@@ -169,8 +169,8 @@ func (s state) report(renotify, force bool, statusPageURL string, conf config) (
 
 	sb.WriteString("Have a nice day!\n")
 
-	subject := fmt.Sprintf("GOGIOS Report [C:%d W:%d U:%d S:%d OK:%d]",
-		numCriticals, numWarnings, numUnknown, numStale, numOK)
+	subject := fmt.Sprintf("GOGIOS Report [C:%d W:%d U:%d S:%d SU:%d OK:%d]",
+		numCriticals, numWarnings, numUnknown, numStale, numSuppressed, numOK)
 
 	doNotify := force || (changed || (renotify && hasUnhandled))
 	return subject, sb.String(), doNotify
