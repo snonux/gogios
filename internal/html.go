@@ -194,11 +194,12 @@ func (s state) htmlReportStaleAlerts(sb *strings.Builder, conf config) int {
 }
 
 // htmlReportSuppressed generates HTML for suppressed checks.
-// Shows which checks are currently muted via OnlyIfNotExists for visibility.
+// Shows which non-OK checks are currently muted via OnlyIfNotExists for visibility.
+// OK checks are never shown as suppressed since there's nothing to suppress.
 func (s state) htmlReportSuppressed(sb *strings.Builder, conf config) (count int) {
 	for name, cs := range s.checks {
-		if !isCheckSuppressed(name, conf) {
-			continue
+		if cs.Status == nagiosOk || !isCheckSuppressed(name, conf) {
+			continue // OK checks are never shown as suppressed
 		}
 		count++
 
@@ -219,10 +220,11 @@ func (s state) htmlReportSuppressed(sb *strings.Builder, conf config) (count int
 	return
 }
 
-// countSuppressed counts the number of suppressed checks.
+// countSuppressed counts the number of suppressed non-OK checks.
+// OK checks are never counted as suppressed since there's nothing to suppress.
 func (s state) countSuppressed(conf config) (count int) {
 	for name := range s.checks {
-		if isCheckSuppressed(name, conf) {
+		if s.checks[name].Status != nagiosOk && isCheckSuppressed(name, conf) {
 			count++
 		}
 	}
@@ -242,8 +244,8 @@ func (s state) htmlReportBy(sb *strings.Builder, showStatusChange, isStaleReport
 		if !isStaleReport && cs.Epoch < s.staleEpoch {
 			continue // skip stale checks in non-stale report
 		}
-		if isCheckSuppressed(name, conf) {
-			continue // skip suppressed checks
+		if cs.Status != nagiosOk && isCheckSuppressed(name, conf) {
+			continue // skip suppressed checks (OK checks are never suppressed)
 		}
 		count++
 

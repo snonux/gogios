@@ -233,12 +233,13 @@ func (s state) reportStaleAlerts(sb *strings.Builder, conf config) int {
 	})
 }
 
-// reportSuppressed lists all checks that are currently suppressed via OnlyIfNotExists.
+// reportSuppressed lists all non-OK checks that are currently suppressed via OnlyIfNotExists.
 // This provides visibility into which alerts are being muted during maintenance windows.
+// OK checks are never shown as suppressed since there's nothing to suppress.
 func (s state) reportSuppressed(sb *strings.Builder, conf config) (count int) {
 	for name, cs := range s.checks {
-		if !isCheckSuppressed(name, conf) {
-			continue
+		if cs.Status == nagiosOk || !isCheckSuppressed(name, conf) {
+			continue // OK checks are never shown as suppressed
 		}
 		count++
 
@@ -263,7 +264,8 @@ func (s state) reportSuppressed(sb *strings.Builder, conf config) (count int) {
 }
 
 // reportBy iterates over checks matching the filter and writes them to sb.
-// Checks that are suppressed via OnlyIfNotExists are excluded from the report.
+// Non-OK checks that are suppressed via OnlyIfNotExists are excluded from the report.
+// OK checks are never suppressed since there's nothing to suppress.
 func (s state) reportBy(sb *strings.Builder, showStatusChange, isStaleReport bool,
 	conf config, filter func(cs checkState) bool,
 ) (count int) {
@@ -274,8 +276,8 @@ func (s state) reportBy(sb *strings.Builder, showStatusChange, isStaleReport boo
 		if !isStaleReport && cs.Epoch < s.staleEpoch {
 			continue // skip stale checks in non-stale report
 		}
-		if isCheckSuppressed(name, conf) {
-			continue // skip suppressed checks
+		if cs.Status != nagiosOk && isCheckSuppressed(name, conf) {
+			continue // skip suppressed checks (OK checks are never suppressed)
 		}
 		count++
 
@@ -309,11 +311,12 @@ func (s state) reportBy(sb *strings.Builder, showStatusChange, isStaleReport boo
 	return
 }
 
-// countBy counts checks matching the filter, excluding suppressed checks.
+// countBy counts checks matching the filter, excluding suppressed non-OK checks.
+// OK checks are never suppressed since there's nothing to suppress.
 func (s state) countBy(conf config, filter func(cs checkState) bool) (count int) {
 	for name, cs := range s.checks {
-		if isCheckSuppressed(name, conf) {
-			continue // skip suppressed checks
+		if cs.Status != nagiosOk && isCheckSuppressed(name, conf) {
+			continue // skip suppressed checks (OK checks are never suppressed)
 		}
 		if filter(cs) {
 			count++
