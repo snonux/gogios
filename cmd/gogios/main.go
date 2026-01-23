@@ -9,8 +9,6 @@ import (
 	"codeberg.org/snonux/gogios/internal"
 )
 
-const versionStr = "v1.3.0"
-
 func main() {
 	configFile := flag.String("cfg", "/etc/gogios.json", "The config file")
 	timeout := flag.Int("timeout", 5, "Global timeout in minutes")
@@ -20,7 +18,7 @@ func main() {
 	flag.Parse()
 
 	if *version {
-		fmt.Printf("This is Gogios version %s; (C) by Paul Buetow\n", versionStr)
+		fmt.Printf("This is Gogios version %s; (C) by Paul Buetow\n", internal.Version)
 		fmt.Println("https://codeberg.org/snonux/gogios")
 		return
 	}
@@ -29,5 +27,8 @@ func main() {
 		time.Duration(*timeout)*time.Minute)
 	defer cancel()
 
-	internal.Run(ctx, *configFile, *renotify, *force)
+	if err := internal.Run(ctx, *configFile, *renotify, *force); err != nil {
+		fmt.Fprintf(os.Stderr, "Error running gogios: %v\n", err)
+		os.Exit(1)
+	}
 }
