@@ -21,6 +21,12 @@ type config struct {
 	CheckConcurrency   int
 	StaleThreshold     int      `json:"StaleThreshold,omitempty"`
 	Federated          []string `json:"Federated,omitempty"` // TODO: Document this option
+	// MinNotifyIntervalS is the minimum interval in seconds between email notifications.
+	// When set > 0, Gogios batches notifications and only sends an email when:
+	// 1. The interval has elapsed since the last notification, AND
+	// 2. There's been a state change since the last notification.
+	// Set to 0 (default) for immediate notifications on every state change.
+	MinNotifyIntervalS            int      `json:"MinNotifyIntervalS,omitempty"`
 	PrometheusHosts               []string `json:"PrometheusHosts,omitempty"`
 	PrometheusTimeoutS            int      `json:"PrometheusTimeoutS,omitempty"`
 	PrometheusOnlyIfNotExists     string   `json:"PrometheusOnlyIfNotExists,omitempty"`     // Suppress Prometheus alerts if this file exists and is recent
