@@ -76,6 +76,9 @@ func Run(ctx context.Context, configFile string, renotify, force bool) error {
 		if err := persistHTMLReport(state, subject, conf); err != nil {
 			notifyError(conf, err)
 		}
+		if err := persistJSONReport(state, subject, conf); err != nil {
+			notifyError(conf, err)
+		}
 	}
 
 	return nil
