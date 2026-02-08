@@ -5,22 +5,27 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net/url"
 	"os"
 )
 
 type config struct {
-	EmailTo            string
-	EmailFrom          string
-	SMTPServer         string `json:"SMTPServer,omitempty"`
-	SMTPDisable        bool   `json:"SMTPDisable,omitempty"` // TODO: Document this option
-	StateDir           string `json:"StateDir,omitempty"`
-	HTMLStatusFile     string `json:"HTMLStatusFile,omitempty"` // Path to HTML status file
-	HTMLDisable        bool   `json:"HTMLDisable,omitempty"`    // Disable HTML status page generation
-	StatusPageURL      string `json:"StatusPageURL,omitempty"`  // URL to the HTML status page for email notifications
-	CheckTimeoutS      int
-	CheckConcurrency   int
-	StaleThreshold     int      `json:"StaleThreshold,omitempty"`
-	Federated          []string `json:"Federated,omitempty"` // TODO: Document this option
+	EmailTo             string
+	EmailFrom           string
+	SMTPServer          string `json:"SMTPServer,omitempty"`
+	SMTPDisable         bool   `json:"SMTPDisable,omitempty"` // TODO: Document this option
+	StateDir            string `json:"StateDir,omitempty"`
+	HTMLStatusFile      string `json:"HTMLStatusFile,omitempty"` // Path to HTML status file
+	HTMLDisable         bool   `json:"HTMLDisable,omitempty"`    // Disable HTML status page generation
+	StatusPageURL       string `json:"StatusPageURL,omitempty"`  // URL to the HTML status page for email notifications
+	PeerURL             string `json:"PeerURL,omitempty"`        // Peer Gogios JSON report URL
+	PeerStaleThresholdS int    `json:"PeerStaleThresholdS,omitempty"`
+	PeerPrimaryName     string `json:"PeerPrimaryName,omitempty"`
+	PeerSecondaryName   string `json:"PeerSecondaryName,omitempty"`
+	CheckTimeoutS       int
+	CheckConcurrency    int
+	StaleThreshold      int      `json:"StaleThreshold,omitempty"`
+	Federated           []string `json:"Federated,omitempty"` // TODO: Document this option
 	// MinNotifyIntervalS is the minimum interval in seconds between email notifications.
 	// When set > 0, Gogios batches notifications and only sends an email when:
 	// 1. The interval has elapsed since the last notification, AND
@@ -69,6 +74,26 @@ func newConfig(configFile string) (config, error) {
 
 	if conf.StaleThreshold == 0 {
 		conf.StaleThreshold = 3600 // Default to 1 hour
+	}
+
+	if conf.PeerURL != "" {
+		if conf.PeerStaleThresholdS == 0 {
+			conf.PeerStaleThresholdS = 600 // Default to 10 minutes
+		}
+
+		if conf.PeerPrimaryName == "" {
+			hostname, err := os.Hostname()
+			if err != nil {
+				log.Fatal(err)
+			}
+			conf.PeerPrimaryName = hostname
+		}
+
+		if conf.PeerSecondaryName == "" {
+			if parsedURL, err := url.Parse(conf.PeerURL); err == nil && parsedURL.Hostname() != "" {
+				conf.PeerSecondaryName = parsedURL.Hostname()
+			}
+		}
 	}
 
 	if conf.PrometheusTimeoutS == 0 {

@@ -29,15 +29,27 @@ func Run(ctx context.Context, configFile string, renotify, force bool) error {
 		log.Println("warning: failed to load notification state:", err)
 	}
 
-	state = runChecks(ctx, state, conf)
-	state = mergePrometheusAlerts(ctx, state, conf)
-	state = mergeFederated(ctx, state, conf)
+	peerIsActive := true
+	peerReason := ""
+	if conf.PeerURL != "" {
+		peerIsActive, peerReason = peerActive(ctx, conf)
+		log.Println(peerReason)
+	}
+
+	passive := !peerIsActive && !force
+	if passive {
+		log.Println("Skipping checks: peer is active")
+	} else {
+		state = runChecks(ctx, state, conf)
+		state = mergePrometheusAlerts(ctx, state, conf)
+		state = mergeFederated(ctx, state, conf)
+	}
 
 	if err := state.persist(); err != nil {
 		notifyError(conf, err)
 	}
 
-	subject, body, doNotify := state.report(renotify, force, conf.StatusPageURL, conf)
+	subject, body, doNotify := state.report(renotify, force, conf.StatusPageURL, conf, passive, peerReason)
 
 	// Apply notification batching when MinNotifyIntervalS is configured.
 	// Force flag bypasses batching to allow immediate notifications when needed.
@@ -53,6 +65,11 @@ func Run(ctx context.Context, configFile string, renotify, force bool) error {
 			doNotify = false
 			log.Println("Notification suppressed: minimum interval not elapsed")
 		}
+	}
+
+	if passive {
+		doNotify = false
+		log.Println("Notification suppressed: peer is active")
 	}
 
 	if doNotify {

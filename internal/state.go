@@ -133,10 +133,25 @@ func (s state) persist() error {
 // report generates the notification email content.
 // statusPageURL is included as a link to the HTML status page.
 // conf is used to determine which checks should be suppressed from the report.
-func (s state) report(renotify, force bool, statusPageURL string, conf config) (string, string, bool) {
+func (s state) report(
+	renotify, force bool,
+	statusPageURL string,
+	conf config,
+	passive bool,
+	passiveReason string,
+) (string, string, bool) {
 	var sb strings.Builder
 
 	sb.WriteString("This is the recent Gogios report!\n\n")
+	if passive {
+		sb.WriteString("NOTE: Passive mode active, checks were skipped.\n")
+		if passiveReason != "" {
+			sb.WriteString("Reason: ")
+			sb.WriteString(passiveReason)
+			sb.WriteString("\n")
+		}
+		sb.WriteString("\n")
+	}
 
 	sb.WriteString("# Alerts with status changed:\n\n")
 	changed := s.reportChanged(&sb, conf)
