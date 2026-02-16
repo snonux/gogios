@@ -288,8 +288,8 @@ func (s state) reportBy(sb *strings.Builder, showStatusChange, isStaleReport boo
 		if !filter(cs) {
 			continue
 		}
-		if !isStaleReport && cs.Epoch < s.staleEpoch {
-			continue // skip stale checks in non-stale report
+		if !isStaleReport && cs.Epoch < s.staleEpoch && cs.Status != nagiosOk {
+			continue // skip stale non-OK checks in non-stale report
 		}
 		if cs.Status != nagiosOk && isCheckSuppressed(name, conf) {
 			continue // skip suppressed checks (OK checks are never suppressed)

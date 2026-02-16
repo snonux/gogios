@@ -18,7 +18,7 @@ func persistHTMLReport(state state, subject string, conf config) error {
 		log.Println("debug: HTMLStatusFile is empty, skipping HTML report generation")
 		return nil
 	}
-	
+
 	log.Println("debug: HTMLStatusFile set to", htmlFile)
 	htmlDir := filepath.Dir(htmlFile)
 
@@ -241,8 +241,8 @@ func (s state) htmlReportBy(sb *strings.Builder, showStatusChange, isStaleReport
 		if !filter(cs) {
 			continue
 		}
-		if !isStaleReport && cs.Epoch < s.staleEpoch {
-			continue // skip stale checks in non-stale report
+		if !isStaleReport && cs.Epoch < s.staleEpoch && cs.Status != nagiosOk {
+			continue // skip stale non-OK checks in non-stale report
 		}
 		if cs.Status != nagiosOk && isCheckSuppressed(name, conf) {
 			continue // skip suppressed checks (OK checks are never suppressed)
