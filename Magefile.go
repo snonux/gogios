@@ -266,8 +266,15 @@ doas pkg_create \
     -B gogios-pkg/stage \
     -p / \
     gogios-pkg/out/gogios-%s.tgz
-echo "OpenBSD package built"
-`, ver)
+
+# Sign the package with signify via pkg_sign
+mkdir -p gogios-pkg/signed
+doas pkg_sign -s signify2 -s /etc/signify/custom-pkg.sec \
+    -o gogios-pkg/signed gogios-pkg/out/gogios-%s.tgz
+# Replace unsigned with signed
+mv gogios-pkg/signed/gogios-%s.tgz gogios-pkg/out/gogios-%s.tgz
+echo "OpenBSD package built and signed"
+`, ver, ver, ver, ver)
 
 	if err := os.WriteFile("/tmp/pkgopenbsd.sh", []byte(script), 0o755); err != nil {
 		return err
