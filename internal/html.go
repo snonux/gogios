@@ -306,33 +306,52 @@ func htmlHeader(subject string, numCriticals, numWarnings, numUnknown, numStale,
 	sb.WriteString(html.EscapeString(subject))
 	sb.WriteString(`</title>
     <style>
+        /* Compact, full-width, monospace layout matching goprecords.f3s.buetow.org */
+        html, body {
+            height: 100%;
+        }
         body {
-            font-family: sans-serif;
-            text-align: center;
-            padding-top: 50px;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+            line-height: 1.3;
+            margin: 0;
+            padding: 8px;
+            background: #fff;
+            color: #000;
         }
+        /* Full-width container, left-aligned like the reference site */
         .container {
-            max-width: 800px;
-            margin: 0 auto;
+            max-width: 100%;
+            margin: 0;
         }
+        /* Headings: small and tight */
+        h1, h2 { margin: 0.5em 0 0.25em; font-weight: 600; }
+        h1 { font-size: 1em; }
+        h2 { font-size: 0.95em; }
+        /* Minimal vertical rhythm */
+        p { margin: 0.2em 0; }
         .summary {
-            margin: 20px 0;
-            font-weight: bold;
+            margin: 0.3em 0;
+            font-weight: 600;
         }
         .section {
-            margin: 30px 0;
-            text-align: left;
+            margin: 0.5em 0;
         }
         .check-item {
-            margin: 10px 0;
-            padding: 5px;
+            margin: 0.1em 0;
         }
+        /* Semantic status colors (kept for at-a-glance severity) */
         .CRITICAL { color: #dc3545; }
         .WARNING { color: #ff8c00; }
         .UNKNOWN { color: #6c757d; }
         .OK { color: #28a745; }
+        /* Links match the reference palette */
+        a { color: #06c; text-decoration: underline; }
+        a:visited { color: #639; }
+        /* Footer rule and muted text */
         .footer {
-            margin-top: 40px;
+            margin-top: 0.5em;
+            padding-top: 0.3em;
+            border-top: 1px solid #ccc;
             font-size: 0.9em;
             color: #666;
         }
