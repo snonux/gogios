@@ -154,8 +154,7 @@ func (s state) report(
 	}
 
 	sb.WriteString("# Alerts with status changed:\n\n")
-	changed := s.reportChanged(&sb, conf)
-	if !changed {
+	if !s.reportChanged(&sb, conf) {
 		sb.WriteString("There were no status changes...\n\n")
 	}
 
@@ -187,8 +186,30 @@ func (s state) report(
 	subject := fmt.Sprintf("GOGIOS Report [C:%d W:%d U:%d S:%d SU:%d OK:%d]",
 		numCriticals, numWarnings, numUnknown, numStale, numSuppressed, numOK)
 
-	doNotify := force || (changed || (renotify && hasUnhandled))
+	// Only CRITICAL-involving transitions page immediately. OK<->WARNING (and other
+	// non-critical) flips still show up in the "status changed" section above, but they
+	// wait for the daily renotify cron job instead of firing an email right away.
+	doNotify := force || (s.hasCriticalChange(conf) || (renotify && hasUnhandled))
 	return subject, sb.String(), doNotify
+}
+
+// hasCriticalChange reports whether any check transitioned into or out of CRITICAL
+// status since the last run. This is the sole trigger for an immediate notification;
+// transitions among OK, WARNING, and UNKNOWN are deferred to the daily renotify job.
+func (s state) hasCriticalChange(conf config) bool {
+	for name, cs := range s.checks {
+		if !cs.changed() {
+			continue
+		}
+		if cs.Status != nagiosCritical && cs.PrevStatus != nagiosCritical {
+			continue
+		}
+		if cs.Status != nagiosOk && isCheckSuppressed(name, conf) {
+			continue // skip suppressed checks (OK checks are never suppressed)
+		}
+		return true
+	}
+	return false
 }
 
 func (s state) reportChanged(sb *strings.Builder, conf config) (changed bool) {
