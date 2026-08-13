@@ -25,6 +25,9 @@ type jsonSummary struct {
 	Ok         int `json:"ok"`
 }
 
+// jsonSections mirrors the sections of the HTML report. Every slice is built
+// non-nil so an empty section marshals as [] rather than null, sparing browser
+// clients a null guard on each section.
 type jsonSections struct {
 	StatusChanged []jsonCheck `json:"statusChanged"`
 	Unhandled     []jsonCheck `json:"unhandled"`
@@ -111,7 +114,7 @@ func (s state) jsonReport(subject string, conf config) jsonReport {
 }
 
 func (s state) jsonReportChanged(now time.Time, conf config) []jsonCheck {
-	var checks []jsonCheck
+	checks := []jsonCheck{}
 	checks = append(checks, s.jsonReportBy(now, true, false, conf, func(cs checkState) bool {
 		return cs.Status == nagiosCritical && cs.changed()
 	})...)
@@ -128,7 +131,7 @@ func (s state) jsonReportChanged(now time.Time, conf config) []jsonCheck {
 }
 
 func (s state) jsonReportUnhandled(now time.Time, conf config) []jsonCheck {
-	var checks []jsonCheck
+	checks := []jsonCheck{}
 	checks = append(checks, s.jsonReportBy(now, false, false, conf, func(cs checkState) bool {
 		return cs.Status == nagiosCritical
 	})...)
@@ -148,7 +151,7 @@ func (s state) jsonReportStale(now time.Time, conf config) []jsonCheck {
 }
 
 func (s state) jsonReportSuppressed(conf config) []jsonCheck {
-	var checks []jsonCheck
+	checks := []jsonCheck{}
 	for name, cs := range s.checks {
 		if cs.Status == nagiosOk || !isCheckSuppressed(name, conf) {
 			continue
@@ -167,13 +170,13 @@ func (s state) jsonReportSuppressed(conf config) []jsonCheck {
 func (s state) jsonReportBy(now time.Time, showStatusChange, isStaleReport bool, conf config,
 	filter func(cs checkState) bool,
 ) []jsonCheck {
-	var checks []jsonCheck
+	checks := []jsonCheck{}
 	for name, cs := range s.checks {
 		if !filter(cs) {
 			continue
 		}
-		if !isStaleReport && cs.Epoch < s.staleEpoch {
-			continue
+		if !isStaleReport && cs.Epoch < s.staleEpoch && cs.Status != nagiosOk {
+			continue // skip stale non-OK checks in non-stale report
 		}
 		if cs.Status != nagiosOk && isCheckSuppressed(name, conf) {
 			continue

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -82,5 +83,52 @@ func TestPersistJSONReport(t *testing.T) {
 	}
 	if len(report.Sections.Suppressed) != 0 {
 		t.Fatalf("unexpected suppressed: %+v", report.Sections.Suppressed)
+	}
+}
+
+// TestJSONReportKeepsStaleOkChecks guards the parity bug where jsonReportBy
+// dropped stale OK checks from sections.ok while countBy still counted them in
+// summary.ok, leaving the blob internally inconsistent. htmlReportBy keeps them
+// (see html.go), so the JSON must too.
+func TestJSONReportKeepsStaleOkChecks(t *testing.T) {
+	now := time.Now().Unix()
+	s := state{
+		checks: map[string]checkState{
+			"FreshOkCheck": {Status: nagiosOk, PrevStatus: nagiosOk, Epoch: now, Output: "all good"},
+			"StaleOkCheck": {Status: nagiosOk, PrevStatus: nagiosOk, Epoch: now - 1000, Output: "old but fine"},
+		},
+		staleEpoch: now - 100,
+	}
+
+	report := s.jsonReport("subject", config{})
+
+	if report.Summary.Ok != 2 {
+		t.Fatalf("summary.ok = %d, want 2", report.Summary.Ok)
+	}
+	if len(report.Sections.Ok) != report.Summary.Ok {
+		t.Fatalf("sections.ok has %d entries but summary.ok says %d: %+v",
+			len(report.Sections.Ok), report.Summary.Ok, report.Sections.Ok)
+	}
+	// A stale OK check is not a stale alert; only non-OK checks count as stale.
+	if report.Summary.Stale != 0 {
+		t.Fatalf("summary.stale = %d, want 0", report.Summary.Stale)
+	}
+}
+
+// TestJSONReportEmptySectionsMarshalAsArrays guards against empty sections
+// serializing as null, which would force a null guard on every browser client.
+func TestJSONReportEmptySectionsMarshalAsArrays(t *testing.T) {
+	s := state{checks: map[string]checkState{}, staleEpoch: time.Now().Unix()}
+
+	data, err := json.Marshal(s.jsonReport("subject", config{}))
+	if err != nil {
+		t.Fatalf("failed to marshal report: %v", err)
+	}
+
+	for _, section := range []string{"statusChanged", "unhandled", "stale", "suppressed", "ok"} {
+		want := `"` + section + `":[]`
+		if !strings.Contains(string(data), want) {
+			t.Fatalf("section %q did not marshal as an empty array; got %s", section, data)
+		}
 	}
 }
