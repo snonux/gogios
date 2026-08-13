@@ -10,14 +10,16 @@ filtered, expanded, searched?
 No application server, no CGI, no reverse proxy to a backend.
 
 **Verdict: technically feasible, but not recommended.** The interactive-page goal is
-sound and the data half is already done. Flutter is the wrong vehicle for it — it adds a
+sound and the data half largely exists already (with one correctness gap, §1.4).
+Flutter is the wrong vehicle for it — it adds a
 multi-GB toolchain and a multi-megabyte client payload to a zero-dependency Go project
 whose entire dataset is 6.9 KB gzipped. A vanilla-JS single-page app reaches the same
 goal at roughly 1/100th the payload and no new build dependency.
 
 ## 1. Current state (measured, not assumed)
 
-The static-JSON half of the request **already exists** and is live in production.
+The static-JSON half of the request **already exists** and is live in production —
+though it is not yet a faithful mirror of the HTML, see finding 4 below.
 
 - `internal/json_report.go` writes a JSON blob next to the HTML file
   (`jsonReportPath()` swaps the extension), atomically via temp-file + rename,
@@ -40,19 +42,35 @@ So the client already downloads ~92 KB of HTML every 5 minutes to render what is
 6.9 KB of gzipped data. That is the actual problem worth fixing, and it is
 independent of which frontend technology is chosen.
 
-Two immediate findings that apply regardless of the decision:
+Findings that apply regardless of the Flutter decision:
 
-1. **`index.json` is served as `application/octet-stream`.** OpenBSD `httpd`'s built-in
+1. **Nothing is compressed, and nothing can be cached.** `httpd` has no on-the-fly gzip;
+   it has `gzip-static`, which serves `<file>.gz` when the client accepts gzip. Note
+   that the file browsers actually fetch on a timer today is **`index.html`** (91,807 B)
+   — nothing polls `index.json` yet — so `index.html.gz` is the immediate win, and
+   `index.json.gz` only becomes one once a client exists. Compounding this, `relayd`
+   forces `Cache-Control: no-cache, no-store, must-revalidate` on every response for
+   this host (`conf/frontends/etc/relayd.conf.tpl:147-150`), so the 5-minute refresh can
+   never come back as a 304 — it is a full transfer, every time.
+2. **The refresh interval outlives the data.** `conf/frontends/etc/gogios.cron.tpl` runs
+   the checks `*/5 8-22 * * *`, but `internal/html.go:304` sets a 300 s meta refresh
+   around the clock, so overnight every poll re-downloads 92 KB of bytes that cannot
+   have changed.
+3. **`index.json` is served as `application/octet-stream`.** OpenBSD `httpd`'s built-in
    media types cover only `text/css`, `text/html`, `text/plain`, `image/gif`,
    `image/png`, `image/jpeg`, `image/svg+xml` and `application/javascript`; everything
    else falls back to `application/octet-stream`. `fetch()` + `Response.json()` ignore
    the Content-Type, so this works today, but it needs a `types` block in
-   `httpd.conf.tpl` to be correct.
-2. **Nothing is compressed.** `httpd` has no on-the-fly gzip; it has `gzip-static`,
-   which serves `<file>.gz` when the client accepts gzip. Writing `index.json.gz`
-   alongside `index.json` would cut the transfer from 110 KB to ~7 KB. This is the
-   single highest-value change in this whole investigation and costs about 20 lines
-   of Go.
+   `conf/frontends/etc/httpd.conf.tpl` (a separate repo) to be correct.
+4. **The JSON blob is not yet at parity with the HTML.** `internal/json_report.go:175`
+   is missing the `&& cs.Status != nagiosOk` guard that `internal/html.go:244` has —
+   commit `e0b58e6` ("show OK checks regardless of staleness") fixed the HTML path and
+   never updated the JSON path. The live blob proves it: `summary.ok` says 459 while
+   `sections.ok` holds 458, and the HTML renders all 459. Any SPA built on this blob
+   starts out *less* correct than the page it replaces. Related: empty sections
+   serialize as `null` rather than `[]` (`var checks []jsonCheck`, e.g.
+   `json_report.go:114`), so the live blob contains `"statusChanged": null` and every
+   client must guard for it.
 
 ## 2. Does Flutter web satisfy the static-assets-only constraint?
 
@@ -68,9 +86,18 @@ The constraint is satisfiable. The objections below are about cost, not possibil
 ### 3.1 Build toolchain (the biggest objection)
 
 `go.mod` currently declares exactly one requirement, `github.com/magefile/mage`, and it
-is marked indirect — Gogios is a pure-stdlib Go program. It ships as a signed OpenBSD
-package built via `mage buildOpenbsd` and installed with `pkg_add` from
-`pkgrepo.f3s.buetow.org`, plus a FreeBSD variant.
+is marked indirect — Gogios is a pure-stdlib Go program. It ships as a signify-signed
+OpenBSD package installed with `pkg_add` from `pkgrepo.f3s.buetow.org`, plus a FreeBSD
+variant. The packaging lives outside this repo, in `conf/packages` (`make pkg
+NAME=gogios SRC=/home/paul/git/gogios`); the `Magefile.go` here has only `Build`, `Dev`,
+`Vet`, `Lint`, `LintInstall` and `Test` since commit `4c4b673` moved the packaging
+targets out. Note that `AGENTS.md` is stale on this point and still documents
+`mage buildOpenbsd`.
+
+That packaging detail cuts against Flutter harder than it first appears: the OpenBSD
+package ships exactly one file, `usr/local/bin/gogios`. A `go:embed`ed SPA rides along
+inside that binary for free, whereas a Flutter bundle is a directory tree of separate
+assets needing an entirely new deployment path to the frontends.
 
 Adding Flutter means adding the Flutter/Dart SDK (multi-GB, no OpenBSD port) to the
 build path of that package. In practice the web bundle would have to be built on Linux
@@ -82,9 +109,17 @@ monitoring tool acquires a heavyweight cross-language build dependency.
 
 Flutter web's baseline is ~1.5–2 MB gzipped for the renderer alone (CanvasKit is
 ~1.5 MB on its own) before any application code. Against 6.9 KB of gzipped data that is
-a 200×–300× overhead for the shell. A service worker caches it after the first load, so
-steady-state cost is bounded — but the first load on a phone, which is exactly when you
-are checking whether the servers are on fire, is the worst case.
+a 200×–300× overhead for the shell. The first load on a phone — which is exactly when
+you are checking whether the servers are on fire — is the worst case.
+
+The usual answer, "a service worker caches the shell after the first load", collides
+with the deployment: `relayd` stamps `Cache-Control: no-cache, no-store,
+must-revalidate`, `Pragma: no-cache` and `Expires: 0` onto every response for this host
+(`conf/frontends/etc/relayd.conf.tpl:147-150`, confirmed present on live responses). A
+service worker can still cache explicitly through the Cache API, but nothing is cached
+for free, and relaxing that rule means editing relayd — the same file notes a `header
+set` cannot be combined with a header match in one rule, hence its tag indirection, so
+it is not a one-line change.
 
 ### 3.3 Serving requirements
 
@@ -93,11 +128,18 @@ are checking whether the servers are on fire, is the worst case.
   `application/octet-stream` breaks `WebAssembly.instantiateStreaming`.
 - **COOP/COEP.** Flutter's Wasm build needs `Cross-Origin-Opener-Policy: same-origin`
   and `Cross-Origin-Embedder-Policy: credentialless` (or `require-corp`) for
-  multi-threaded rendering. OpenBSD `httpd` *does* support this via `header set`, so
-  this is solvable — it was my initial assumption that it was not.
-- **iOS is a hard fallback.** WasmGC is unavailable in WebKit, and all iOS browsers are
-  required to use WebKit, so on iPhone the app always falls back to the CanvasKit JS
-  renderer. Firefox and Safari WasmGC support is still tracked by open bugs.
+  multi-threaded rendering. The `header set` directive documented in the httpd.conf(5)
+  man page exists only in OpenBSD **-current**; the 7.6, 7.7 and 7.8 manuals have no
+  `header` directive, and the frontends run 7.8. So httpd cannot set these headers here.
+  It is still solvable, because `relayd` sits in front and already does exactly this
+  kind of rewrite (`conf/frontends/etc/relayd.conf.tpl:147-150`) — but the mechanism is
+  relayd, not httpd.
+- **iOS is a hard fallback.** All iOS browsers are required to use WebKit, and Flutter's
+  Wasm renderer is blocked there: Safari does now support WasmGC but hits a bug that
+  breaks Flutter compatibility, and Firefox shipped WasmGC in 120 with its own
+  Flutter-compat bug. So on iPhone the app always falls back to the CanvasKit JS
+  renderer. The blockers are Flutter-compatibility bugs plus the iOS engine policy, not
+  absent WasmGC.
 
 ### 3.4 Rendering model
 
@@ -126,15 +168,31 @@ mobile client. No such client exists in this project.
 
 ## 5. Suggested follow-up tasks
 
-In priority order, all independent of the Flutter decision:
+In priority order, all independent of the Flutter decision. Items 2 and 3 touch the
+separate `conf` repo, not this one.
 
-1. **Write `index.json.gz` alongside `index.json`** and enable `gzip-static` in the
-   gogios `httpd` server block. 110 KB → ~7 KB per poll. Highest value, lowest cost.
-2. **Add a `types` block** to `conf/frontends/etc/httpd.conf.tpl` so `.json` is served
+1. **Fix the JSON/HTML parity bug** — add the missing `&& cs.Status != nagiosOk` guard
+   at `internal/json_report.go:175` so `sections.ok` matches `summary.ok`, and
+   initialise the section slices to `[]jsonCheck{}` so empty sections serialize as `[]`
+   instead of `null`. Prerequisite for anything built on the blob.
+2. **Write `.gz` companions and enable `gzip-static`** in the gogios `httpd` server
+   block — `index.html.gz` first, since that is what browsers actually poll, and
+   `index.json.gz` once a client consumes it. 92 KB → ~7 KB per poll. Caveat: httpd
+   serves `<file>.gz` whenever the client accepts gzip, with **no freshness check**
+   against the original, so the `.gz` must be written and renamed atomically exactly
+   like `json_report.go:58-72` does. A leftover or stale `.gz` shadows the real file
+   permanently for every gzip-capable client.
+3. **Add a `types` block** to `conf/frontends/etc/httpd.conf.tpl` so `.json` is served
    as `application/json`.
-3. **Replace the generated HTML with an embedded JS SPA** that fetches `index.json`,
+4. **Replace the generated HTML with an embedded JS SPA** that fetches `index.json`,
    with client-side filtering, expandable details, and search over all sections.
-4. **Add `manifest.json` + service worker** to make it installable and offline-capable.
+5. **Add `manifest.json` + service worker** to make it installable and offline-capable —
+   remembering that relayd's blanket `no-store` (§3.2) means caching must be explicit
+   via the Cache API.
+
+Compacting the JSON (`json_report.go:67` currently pretty-prints with `SetIndent`) is
+*not* worth a task on its own: 110,534 B pretty vs 83,645 B compact, but only 6,895 B
+vs 6,508 B once gzipped. Do it only if item 2 is declined.
 
 ## 6. Sources
 
