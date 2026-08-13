@@ -30,11 +30,16 @@ mage lint           # Run golangci-lint
 mage lintInstall    # Install golangci-lint
 ```
 
-### Cross-compile for OpenBSD
+### Build, package, and deploy for OpenBSD/FreeBSD
+Packaging targets were removed from the Magefile; cross-compiling, packaging,
+signing, and uploading to the custom package repo now live in
+`~/git/conf/packages/Makefile` (outside this repo):
 ```bash
-mage openbsd        # Build and deploy for OpenBSD
-mage buildOpenbsd   # Build only
+cd ~/git/conf/packages && make pkg-openbsd NAME=gogios SRC=/home/paul/git/gogios
+cd ~/git/conf/packages && make pkg-freebsd NAME=gogios SRC=/home/paul/git/gogios
 ```
+Installing onto the frontends is then done via `rex gogios_install` from
+`~/git/conf/frontends` (see the `gogios` skill for the full workflow).
 
 ## Project Structure
 
