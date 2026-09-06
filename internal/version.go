@@ -5,7 +5,6 @@ import "fmt"
 const Version = "v1.4.6"
 
 // Homepage is the canonical public repository URL on GitHub.
-// Releases may still be published to Codeberg via GoReleaser.
 const Homepage = "https://github.com/snonux/gogios"
 
 // VersionBanner returns the two lines printed by gogios -version.

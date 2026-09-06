@@ -34,7 +34,7 @@ Have a nice day!
 
 ## Installation
 
-The canonical Go module and clone URL is `github.com/snonux/gogios`. Releases are still published to Codeberg via GoReleaser (`gitea_urls` in `.goreleaser.yaml`); the Codeberg copy may also mirror the Git repo. Use `go get github.com/snonux/gogios@latest` for tags at `v1.4.6` and newer; older tags still declare the former `codeberg.org/snonux/gogios` module path.
+The canonical Go module and clone URL is `github.com/snonux/gogios`. Install from source with `go install github.com/snonux/gogios/cmd/gogios@latest` (or the compile steps below). Prebuilt release archives are no longer published from this repository. Use `go get github.com/snonux/gogios@latest` for tags at `v1.4.6` and newer; older tags still declare the former `codeberg.org/snonux/gogios` module path.
 
 ### Compiling and installing Gogios
 
