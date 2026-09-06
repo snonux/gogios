@@ -7,7 +7,7 @@ import (
 	"os"
 	"time"
 
-	"codeberg.org/snonux/gogios/internal"
+	"github.com/snonux/gogios/internal"
 )
 
 func main() {
@@ -19,8 +19,7 @@ func main() {
 	flag.Parse()
 
 	if *version {
-		fmt.Printf("This is Gogios version %s; (C) by Paul Buetow\n", internal.Version)
-		fmt.Println("https://codeberg.org/snonux/gogios")
+		fmt.Print(internal.VersionBanner())
 		return
 	}
 

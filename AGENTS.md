@@ -64,7 +64,7 @@ internal/           # Core implementation
 - Use standard Go formatting (`gofmt`)
 - Tests use the standard `testing` package with `*_test.go` suffix
 - Internal packages under `internal/` are not exported
-- Module path: `codeberg.org/snonux/gogios`
+- Module path: `github.com/snonux/gogios`
 
 ## Testing
 

@@ -1,4 +1,4 @@
-module codeberg.org/snonux/gogios
+module github.com/snonux/gogios
 
 go 1.24
 

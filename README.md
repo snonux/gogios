@@ -34,6 +34,8 @@ Have a nice day!
 
 ## Installation
 
+The canonical Go module and clone URL is `github.com/snonux/gogios`. Releases are still published to Codeberg via GoReleaser (`gitea_urls` in `.goreleaser.yaml`); the Codeberg copy may also mirror the Git repo. Use `go get github.com/snonux/gogios@latest` for tags at `v1.4.6` and newer; older tags still declare the former `codeberg.org/snonux/gogios` module path.
+
 ### Compiling and installing Gogios
 
 This README is primarily written for OpenBSD, but applying the corresponding steps to any Unix-like (e.g. Linux-based) operating system should be easy. On systems other than OpenBSD, you may always have to replace `does` with the `sudo` command and replace the `/usr/local/bin` path with `/usr/bin`.
@@ -41,7 +43,7 @@ This README is primarily written for OpenBSD, but applying the corresponding ste
 To compile and install Gogios on OpenBSD, follow these steps:
 
 ```
-git clone https://codeberg.org/snonux/gogios.git
+git clone https://github.com/snonux/gogios.git
 cd gogios
 go build -o gogios cmd/gogios/main.go # Or, alternatively: `mage build`.
 doas cp gogios /usr/local/bin/gogios
