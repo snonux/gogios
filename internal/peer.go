@@ -7,11 +7,20 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strings"
 	"time"
 )
 
+const defaultDNSStandbyFile = "/var/nsd/run/current_standby"
+
 type peerReport struct {
-	LastUpdated string `json:"lastUpdated"`
+	LastUpdated  string `json:"lastUpdated"`
+	ChecksActive bool   `json:"checksActive"`
+}
+
+type peerSnapshot struct {
+	LastUpdated  time.Time
+	ChecksActive bool
 }
 
 func peerActive(ctx context.Context, conf config) (bool, string) {
@@ -24,7 +33,7 @@ func peerActive(ctx context.Context, conf config) (bool, string) {
 		return true, fmt.Sprintf("Peer failover: hostname lookup failed (%v); staying active", err)
 	}
 
-	return peerActiveAt(ctx, conf, time.Now(), hostname, fetchPeerLastUpdated)
+	return peerActiveAt(ctx, conf, time.Now(), hostname, fetchPeerSnapshot)
 }
 
 func peerActiveAt(
@@ -32,7 +41,7 @@ func peerActiveAt(
 	conf config,
 	now time.Time,
 	hostname string,
-	fetch func(context.Context, string) (time.Time, error),
+	fetch func(context.Context, string) (peerSnapshot, error),
 ) (bool, string) {
 	if conf.PeerURL == "" {
 		return true, "Peer failover: disabled (PeerURL not set)"
@@ -59,28 +68,59 @@ func peerActiveAt(
 			hostname, primary, secondary)
 	}
 
+	standby := dnsStandbyName(conf, primary, secondary, now)
+	if hostname == standby {
+		return true, fmt.Sprintf("Peer failover: local host is DNS standby checker (%s)", standby)
+	}
+
 	staleThresholdS := conf.PeerStaleThresholdS
 	if staleThresholdS == 0 {
 		staleThresholdS = 600
 	}
 
-	lastUpdated, err := fetch(ctx, conf.PeerURL)
+	peer, err := fetch(ctx, conf.PeerURL)
 	if err != nil {
 		return true, fmt.Sprintf("Peer failover: peer check failed (%v); staying active", err)
 	}
 
-	age := now.Sub(lastUpdated)
+	age := now.Sub(peer.LastUpdated)
 	if age > time.Duration(staleThresholdS)*time.Second {
 		return true, fmt.Sprintf("Peer failover: peer stale (%v > %ds); staying active",
 			age, staleThresholdS)
 	}
 
-	master := scheduledMaster(primary, secondary, now)
-	if hostname == master {
-		return true, fmt.Sprintf("Peer failover: peer healthy; scheduled master is %s", master)
+	if peer.ChecksActive {
+		return false, fmt.Sprintf("Peer failover: peer healthy and checksActive; DNS standby is %s", standby)
 	}
 
-	return false, fmt.Sprintf("Peer failover: peer healthy; scheduled master is %s", master)
+	return true, fmt.Sprintf("Peer failover: peer healthy but not checksActive; taking over (standby %s)", standby)
+}
+
+// dnsStandbyName returns the FQDN that should run gogios plugin checks.
+// Prefer /var/nsd/run/current_standby from dns-failover; fall back to week parity
+// (even week → secondary, odd week → primary), matching DNS HA standby.
+func dnsStandbyName(conf config, primary, secondary string, now time.Time) string {
+	path := conf.DNSStandbyFile
+	if path == "" {
+		path = defaultDNSStandbyFile
+	}
+	if name := readRoleFile(path); name != "" && (name == primary || name == secondary) {
+		return name
+	}
+	return scheduledStandby(primary, secondary, now)
+}
+
+func readRoleFile(path string) string {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(data))
+}
+
+// scheduledStandby matches dns-failover week parity: even → secondary, odd → primary.
+func scheduledStandby(primary, secondary string, now time.Time) string {
+	return scheduledMaster(primary, secondary, now)
 }
 
 func scheduledMaster(primary, secondary string, now time.Time) string {
@@ -108,10 +148,10 @@ func weekNumberSunday(t time.Time) int {
 	return 1 + (daysSinceFirstSunday / 7)
 }
 
-func fetchPeerLastUpdated(ctx context.Context, peerURL string) (time.Time, error) {
+func fetchPeerSnapshot(ctx context.Context, peerURL string) (peerSnapshot, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, peerURL, nil)
 	if err != nil {
-		return time.Time{}, err
+		return peerSnapshot{}, err
 	}
 
 	client := http.Client{
@@ -120,26 +160,29 @@ func fetchPeerLastUpdated(ctx context.Context, peerURL string) (time.Time, error
 
 	resp, err := client.Do(req)
 	if err != nil {
-		return time.Time{}, err
+		return peerSnapshot{}, err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
-		return time.Time{}, fmt.Errorf("unexpected status %d", resp.StatusCode)
+		return peerSnapshot{}, fmt.Errorf("unexpected status %d", resp.StatusCode)
 	}
 
 	var report peerReport
 	if err := json.NewDecoder(resp.Body).Decode(&report); err != nil {
-		return time.Time{}, err
+		return peerSnapshot{}, err
 	}
 	if report.LastUpdated == "" {
-		return time.Time{}, fmt.Errorf("missing lastUpdated")
+		return peerSnapshot{}, fmt.Errorf("missing lastUpdated")
 	}
 
 	lastUpdated, err := time.Parse(time.RFC3339, report.LastUpdated)
 	if err != nil {
-		return time.Time{}, err
+		return peerSnapshot{}, err
 	}
 
-	return lastUpdated, nil
+	return peerSnapshot{
+		LastUpdated:  lastUpdated,
+		ChecksActive: report.ChecksActive,
+	}, nil
 }

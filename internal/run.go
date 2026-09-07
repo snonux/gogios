@@ -36,7 +36,11 @@ func Run(ctx context.Context, configFile string, renotify, force bool) error {
 		log.Println(peerReason)
 	}
 
-	passive := !peerIsActive && !force
+	// checksActive is true only when this run executes plugins. -force never
+	// overrides the peer/role election for plugins: it only forces notifications
+	// from the existing persisted state (Sunday renotify on the DNS master).
+	passive := !peerIsActive
+	checksActive := !passive
 	if passive {
 		log.Println("Skipping checks: peer is active")
 	} else {
@@ -67,9 +71,11 @@ func Run(ctx context.Context, configFile string, renotify, force bool) error {
 		}
 	}
 
-	if passive {
+	if passive && !force {
 		doNotify = false
 		log.Println("Notification suppressed: peer is active")
+	} else if passive && force {
+		log.Println("Force notify while passive: skipping checks but allowing notifications")
 	}
 
 	if doNotify {
@@ -93,7 +99,7 @@ func Run(ctx context.Context, configFile string, renotify, force bool) error {
 		if err := persistHTMLReport(state, subject, conf); err != nil {
 			notifyError(conf, err)
 		}
-		if err := persistJSONReport(state, subject, conf); err != nil {
+		if err := persistJSONReport(state, subject, conf, checksActive); err != nil {
 			notifyError(conf, err)
 		}
 	}

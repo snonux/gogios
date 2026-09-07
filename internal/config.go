@@ -22,10 +22,14 @@ type config struct {
 	PeerStaleThresholdS int    `json:"PeerStaleThresholdS,omitempty"`
 	PeerPrimaryName     string `json:"PeerPrimaryName,omitempty"`
 	PeerSecondaryName   string `json:"PeerSecondaryName,omitempty"`
-	CheckTimeoutS       int
-	CheckConcurrency    int
-	StaleThreshold      int      `json:"StaleThreshold,omitempty"`
-	Federated           []string `json:"Federated,omitempty"` // TODO: Document this option
+	// DNSStandbyFile is written by dns-failover.ksh. Gogios elects the DNS
+	// standby as the sole checker when PeerURL is set. Default:
+	// /var/nsd/run/current_standby.
+	DNSStandbyFile   string `json:"DNSStandbyFile,omitempty"`
+	CheckTimeoutS    int
+	CheckConcurrency int
+	StaleThreshold   int      `json:"StaleThreshold,omitempty"`
+	Federated        []string `json:"Federated,omitempty"` // TODO: Document this option
 	// MinNotifyIntervalS is the minimum interval in seconds between email notifications.
 	// When set > 0, Gogios batches notifications and only sends an email when:
 	// 1. The interval has elapsed since the last notification, AND

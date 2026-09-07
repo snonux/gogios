@@ -40,7 +40,7 @@ func TestPersistJSONReport(t *testing.T) {
 	}
 
 	subject := "GOGIOS Report [C:1 W:1 U:0 S:1 SU:0 OK:1]"
-	if err := persistJSONReport(s, subject, conf); err != nil {
+	if err := persistJSONReport(s, subject, conf, true); err != nil {
 		t.Fatalf("persistJSONReport() error = %v", err)
 	}
 
@@ -60,6 +60,9 @@ func TestPersistJSONReport(t *testing.T) {
 	}
 	if _, err := time.Parse(time.RFC3339, report.LastUpdated); err != nil {
 		t.Fatalf("lastUpdated is not RFC3339: %v", err)
+	}
+	if !report.ChecksActive {
+		t.Fatal("checksActive = false, want true for active persist")
 	}
 	if report.Subject != subject {
 		t.Fatalf("subject = %q, want %q", report.Subject, subject)
@@ -100,7 +103,7 @@ func TestJSONReportKeepsStaleOkChecks(t *testing.T) {
 		staleEpoch: now - 100,
 	}
 
-	report := s.jsonReport("subject", config{})
+	report := s.jsonReport("subject", config{}, false)
 
 	if report.Summary.Ok != 2 {
 		t.Fatalf("summary.ok = %d, want 2", report.Summary.Ok)
@@ -120,7 +123,7 @@ func TestJSONReportKeepsStaleOkChecks(t *testing.T) {
 func TestJSONReportEmptySectionsMarshalAsArrays(t *testing.T) {
 	s := state{checks: map[string]checkState{}, staleEpoch: time.Now().Unix()}
 
-	data, err := json.Marshal(s.jsonReport("subject", config{}))
+	data, err := json.Marshal(s.jsonReport("subject", config{}, false))
 	if err != nil {
 		t.Fatalf("failed to marshal report: %v", err)
 	}
@@ -130,5 +133,32 @@ func TestJSONReportEmptySectionsMarshalAsArrays(t *testing.T) {
 		if !strings.Contains(string(data), want) {
 			t.Fatalf("section %q did not marshal as an empty array; got %s", section, data)
 		}
+	}
+	if !strings.Contains(string(data), `"checksActive":false`) {
+		t.Fatalf("checksActive false not marshaled explicitly; got %s", data)
+	}
+}
+
+func TestJSONReportChecksActivePassive(t *testing.T) {
+	tmpDir := t.TempDir()
+	htmlFile := filepath.Join(tmpDir, "status.html")
+	conf := config{HTMLStatusFile: htmlFile}
+	s := state{checks: map[string]checkState{}, staleEpoch: time.Now().Unix()}
+
+	if err := persistJSONReport(s, "subject", conf, false); err != nil {
+		t.Fatalf("persistJSONReport() error = %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(tmpDir, "status.json"))
+	if err != nil {
+		t.Fatalf("failed to read JSON file: %v", err)
+	}
+
+	var report jsonReport
+	if err := json.Unmarshal(data, &report); err != nil {
+		t.Fatalf("failed to unmarshal JSON report: %v", err)
+	}
+	if report.ChecksActive {
+		t.Fatal("checksActive = true, want false when passive")
 	}
 }

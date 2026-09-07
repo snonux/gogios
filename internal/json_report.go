@@ -10,10 +10,11 @@ import (
 )
 
 type jsonReport struct {
-	LastUpdated string       `json:"lastUpdated"`
-	Subject     string       `json:"subject"`
-	Summary     jsonSummary  `json:"summary"`
-	Sections    jsonSections `json:"sections"`
+	LastUpdated  string       `json:"lastUpdated"`
+	ChecksActive bool         `json:"checksActive"`
+	Subject      string       `json:"subject"`
+	Summary      jsonSummary  `json:"summary"`
+	Sections     jsonSections `json:"sections"`
 }
 
 type jsonSummary struct {
@@ -46,7 +47,7 @@ type jsonCheck struct {
 	LastCheckedAgeSeconds int64  `json:"lastCheckedAgeSeconds,omitempty"`
 }
 
-func persistJSONReport(state state, subject string, conf config) error {
+func persistJSONReport(state state, subject string, conf config, checksActive bool) error {
 	htmlFile := conf.HTMLStatusFile
 	if htmlFile == "" {
 		return nil
@@ -65,7 +66,7 @@ func persistJSONReport(state state, subject string, conf config) error {
 	}
 	defer f.Close()
 
-	report := state.jsonReport(subject, conf)
+	report := state.jsonReport(subject, conf, checksActive)
 	encoder := json.NewEncoder(f)
 	encoder.SetIndent("", "  ")
 	if err := encoder.Encode(report); err != nil {
@@ -83,7 +84,7 @@ func jsonReportPath(htmlPath string) string {
 	return strings.TrimSuffix(htmlPath, ext) + ".json"
 }
 
-func (s state) jsonReport(subject string, conf config) jsonReport {
+func (s state) jsonReport(subject string, conf config, checksActive bool) jsonReport {
 	now := time.Now()
 
 	summary := jsonSummary{
@@ -106,10 +107,11 @@ func (s state) jsonReport(subject string, conf config) jsonReport {
 	}
 
 	return jsonReport{
-		LastUpdated: now.Format(time.RFC3339),
-		Subject:     subject,
-		Summary:     summary,
-		Sections:    sections,
+		LastUpdated:  now.Format(time.RFC3339),
+		ChecksActive: checksActive,
+		Subject:      subject,
+		Summary:      summary,
+		Sections:     sections,
 	}
 }
 
