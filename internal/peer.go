@@ -4,9 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
+	"os/exec"
 	"strings"
 	"time"
 )
@@ -23,6 +25,11 @@ type peerSnapshot struct {
 	ChecksActive bool
 }
 
+// hostProber reports whether a peer hostname is reachable. Used so the DNS
+// master takes over checks when the standby is down even if a recent JSON
+// report still advertises checksActive.
+type hostProber func(ctx context.Context, host string) error
+
 func peerActive(ctx context.Context, conf config) (bool, string) {
 	if conf.PeerURL == "" {
 		return true, "Peer failover: disabled (PeerURL not set)"
@@ -33,7 +40,7 @@ func peerActive(ctx context.Context, conf config) (bool, string) {
 		return true, fmt.Sprintf("Peer failover: hostname lookup failed (%v); staying active", err)
 	}
 
-	return peerActiveAt(ctx, conf, time.Now(), hostname, fetchPeerSnapshot)
+	return peerActiveAt(ctx, conf, time.Now(), hostname, fetchPeerSnapshot, probeHostReachable)
 }
 
 func peerActiveAt(
@@ -42,6 +49,7 @@ func peerActiveAt(
 	now time.Time,
 	hostname string,
 	fetch func(context.Context, string) (peerSnapshot, error),
+	probe hostProber,
 ) (bool, string) {
 	if conf.PeerURL == "" {
 		return true, "Peer failover: disabled (PeerURL not set)"
@@ -89,11 +97,17 @@ func peerActiveAt(
 			age, staleThresholdS)
 	}
 
-	if peer.ChecksActive {
-		return false, fmt.Sprintf("Peer failover: peer healthy and checksActive; DNS standby is %s", standby)
+	if !peer.ChecksActive {
+		return true, fmt.Sprintf("Peer failover: peer healthy but not checksActive; taking over (standby %s)", standby)
 	}
 
-	return true, fmt.Sprintf("Peer failover: peer healthy but not checksActive; taking over (standby %s)", standby)
+	if probe != nil {
+		if err := probe(ctx, standby); err != nil {
+			return true, fmt.Sprintf("Peer failover: DNS standby %s unreachable (%v); taking over", standby, err)
+		}
+	}
+
+	return false, fmt.Sprintf("Peer failover: peer healthy and checksActive; DNS standby is %s", standby)
 }
 
 // dnsStandbyName returns the FQDN that should run gogios plugin checks.
@@ -185,4 +199,32 @@ func fetchPeerSnapshot(ctx context.Context, peerURL string) (peerSnapshot, error
 		LastUpdated:  lastUpdated,
 		ChecksActive: report.ChecksActive,
 	}, nil
+}
+
+// probeHostReachable checks that the DNS standby is alive before the master
+// goes passive. ICMP ping first; TCP :443 fallback for unprivileged contexts.
+func probeHostReachable(ctx context.Context, host string) error {
+	if err := probeHostICMP(ctx, host); err == nil {
+		return nil
+	}
+	return probeHostTCP(ctx, host, "443")
+}
+
+func probeHostICMP(ctx context.Context, host string) error {
+	// OpenBSD: -w max wait seconds. Linux busybox/iputils: -W often works too.
+	cmd := exec.CommandContext(ctx, "ping", "-c", "1", "-w", "2", host)
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("ping: %w", err)
+	}
+	return nil
+}
+
+func probeHostTCP(ctx context.Context, host, port string) error {
+	d := net.Dialer{Timeout: 2 * time.Second}
+	conn, err := d.DialContext(ctx, "tcp", net.JoinHostPort(host, port))
+	if err != nil {
+		return fmt.Errorf("tcp/%s: %w", port, err)
+	}
+	_ = conn.Close()
+	return nil
 }
