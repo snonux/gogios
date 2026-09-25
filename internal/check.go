@@ -8,6 +8,10 @@ import (
 	"time"
 )
 
+// checkWaitDelay bounds how long a check waits for its output pipes after the
+// plugin was killed (see runCommand).
+const checkWaitDelay = 5 * time.Second
+
 type check struct {
 	Plugin              string
 	Args                []string
@@ -43,29 +47,38 @@ type checkResult struct {
 // }
 
 func (c check) run(ctx context.Context, name string) checkResult {
-	cmd := exec.CommandContext(ctx, c.Plugin, c.Args...)
-
-	var bytes bytes.Buffer
-	cmd.Stdout = &bytes
-	cmd.Stderr = &bytes
-
-	if err := cmd.Run(); err != nil {
-		if ctx.Err() == context.DeadlineExceeded {
-			return checkResult{name, "Check command timed out", time.Now().Unix(), nagiosCritical, ""}
-		}
+	out, ec, err := runCommand(ctx, checkWaitDelay, c.Plugin, c.Args...)
+	if err != nil && ctx.Err() == context.DeadlineExceeded {
+		return checkResult{name, "Check command timed out", time.Now().Unix(), nagiosCritical, ""}
 	}
 
 	// Remove Nagios perf data from output and trim whitespaces
-	parts := strings.Split(bytes.String(), "|")
-	output := strings.TrimSpace(parts[0])
+	output := strings.TrimSpace(strings.Split(out, "|")[0])
 
-	ec := cmd.ProcessState.ExitCode()
 	if ec < int(nagiosOk) || ec > int(nagiosUnknown) {
 		// If the exit code is not in the range of known Nagios codes, treat it as unknown
 		ec = int(nagiosUnknown)
 	}
 
 	return checkResult{name, output, time.Now().Unix(), nagiosCode(ec), ""}
+}
+
+// runCommand runs plugin and returns its combined output and exit code (-1
+// when it did not exit normally). Killing the plugin when ctx ends is not
+// enough to end the call: a child the plugin forked (a shell pipeline, a
+// backgrounded helper) can hold stdout open, and without WaitDelay Wait blocks
+// until that child exits, which kept a whole run, and with it the run lock,
+// alive indefinitely. waitDelay caps the wait for the pipes after the kill.
+func runCommand(ctx context.Context, waitDelay time.Duration, plugin string, args ...string) (string, int, error) {
+	cmd := exec.CommandContext(ctx, plugin, args...)
+	cmd.WaitDelay = waitDelay
+
+	var buf bytes.Buffer
+	cmd.Stdout = &buf
+	cmd.Stderr = &buf
+
+	err := cmd.Run()
+	return buf.String(), cmd.ProcessState.ExitCode(), err
 }
 
 func (c check) skip(name, output string) checkResult {

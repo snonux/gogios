@@ -3,6 +3,7 @@ package internal
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -205,5 +206,137 @@ func TestHostLocalJSONRoundTrip(t *testing.T) {
 	}
 	if got := checksFromSections(report.Sections)["Check Disk passive"]; got.Host != passiveHost || got.PrevStatus != nagiosOk || !got.Hidden || !got.PrevHidden {
 		t.Fatalf("round trip = %+v", got)
+	}
+}
+
+// newState keeps a peer's host-local checks and peerLocalCheck when a peer
+// is configured, so they can turn UNKNOWN when the peer is unreachable, and
+// drops them (and this node's own unconfigured ones) otherwise.
+func TestNewStateKeepsPeerLocal(t *testing.T) {
+	persisted := map[string]checkState{
+		"Check Disk passive": {Status: nagiosOk, Host: passiveHost},
+		"Check Gone active":  {Status: nagiosOk, Host: activeHost},
+		peerLocalCheck:       {Status: nagiosOk},
+		"Removed":            {Status: nagiosOk},
+		"Prometheus: X":      {Status: nagiosOk},
+	}
+	tests := []struct {
+		name    string
+		peerURL string
+		want    []string
+	}{
+		{"with peer", "https://passive.example/gogios/index.json", []string{"Check Disk passive", peerLocalCheck, "Prometheus: X"}},
+		{"without peer", "", []string{"Prometheus: X"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			s := state{stateFile: dir + "/state.json", checks: persisted}
+			if err := s.persist(); err != nil {
+				t.Fatal(err)
+			}
+			conf := config{StateDir: dir, hostname: activeHost, PeerURL: tt.peerURL, Checks: map[string]check{}}
+			loaded, err := newState(conf)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(loaded.checks) != len(tt.want) {
+				t.Fatalf("kept %v, want %v", loaded.checks, tt.want)
+			}
+			for _, name := range tt.want {
+				if _, ok := loaded.checks[name]; !ok {
+					t.Errorf("%s dropped", name)
+				}
+			}
+		})
+	}
+}
+
+// An unreachable peer turns its host-local checks UNKNOWN instead of making
+// them vanish; peerLocalCheck goes UNKNOWN, then CRITICAL (mailed by the
+// active node) on the second failure in a row, and its recovery mails too.
+func TestMergePeerUnreachable(t *testing.T) {
+	now := time.Now()
+	conf := config{hostname: activeHost, PeerURL: "https://passive.example/gogios/index.json", Checks: map[string]check{
+		"Check Disk active": {Local: true},
+	}}
+	s := state{checks: map[string]checkState{
+		"Check Disk passive": {Status: nagiosCritical, PrevStatus: nagiosCritical, Epoch: now.Unix() - 300, Output: "DISK CRITICAL", Host: passiveHost},
+		"Check Disk active":  {Status: nagiosOk, PrevStatus: nagiosOk, Host: activeHost},
+		peerLocalCheck:       {Status: nagiosOk, PrevStatus: nagiosOk},
+	}}
+	down := errors.New("connection refused")
+
+	s = mergePeer(s, peerSnapshot{}, down, conf, now, 10*time.Minute)
+	disk := s.checks["Check Disk passive"]
+	if disk.Status != nagiosUnknown || disk.changed() || disk.Epoch != now.Unix()-300 ||
+		!strings.Contains(disk.Output, "unreachable") || !strings.Contains(disk.Output, "DISK CRITICAL") {
+		t.Fatalf("peer check after a failed fetch = %+v, want unchanged UNKNOWN with the old epoch and last result", disk)
+	}
+	if s.checks["Check Disk active"].Status != nagiosOk {
+		t.Error("the node's own host-local check must not be touched")
+	}
+	if pc := s.checks[peerLocalCheck]; pc.Status != nagiosUnknown {
+		t.Fatalf("first failure: %s = %+v, want UNKNOWN", peerLocalCheck, pc)
+	}
+	if s.ownedBy(activeHost, false).hasCriticalChange(conf) {
+		t.Fatal("a single failed fetch must not mail")
+	}
+
+	s = mergePeer(s, peerSnapshot{}, down, conf, now, 10*time.Minute)
+	if s.checks["Check Disk passive"].Output != disk.Output {
+		t.Errorf("UNKNOWN output nested: %q", s.checks["Check Disk passive"].Output)
+	}
+	owned := s.ownedBy(activeHost, false)
+	if pc := owned.checks[peerLocalCheck]; pc.Status != nagiosCritical || !owned.hasCriticalChange(conf) {
+		t.Fatalf("second failure: %s = %+v, want a mailed CRITICAL owned by the active node", peerLocalCheck, pc)
+	}
+
+	peer := peerSnapshot{LastUpdated: now, Checks: map[string]checkState{
+		"Check Disk passive": {Status: nagiosOk, PrevStatus: nagiosCritical, Host: passiveHost},
+	}}
+	s = mergePeer(s, peer, nil, conf, now, 10*time.Minute)
+	if pc := s.checks[peerLocalCheck]; pc.Status != nagiosOk || !s.ownedBy(activeHost, false).hasCriticalChange(conf) {
+		t.Fatalf("peer back: %s = %+v, want a mailed recovery to OK", peerLocalCheck, pc)
+	}
+	if !strings.Contains(s.checks[peerLocalCheck].Output, passiveHost) {
+		t.Errorf("OK output %q does not name the peer host", s.checks[peerLocalCheck].Output)
+	}
+}
+
+// A fetched but stale peer report makes peerLocalCheck CRITICAL right away.
+func TestMergePeerStaleIsCritical(t *testing.T) {
+	now := time.Now()
+	conf := config{hostname: activeHost, PeerURL: "https://passive.example/"}
+	s := state{checks: map[string]checkState{}}
+	peer := peerSnapshot{LastUpdated: now.Add(-time.Hour), Checks: map[string]checkState{
+		"Check Disk passive": {Status: nagiosOk, Host: passiveHost},
+	}}
+	s = mergePeer(s, peer, nil, conf, now, 10*time.Minute)
+	if pc := s.checks[peerLocalCheck]; pc.Status != nagiosCritical || !strings.Contains(pc.Output, "stale") {
+		t.Fatalf("%s = %+v, want CRITICAL naming the staleness", peerLocalCheck, pc)
+	}
+}
+
+// A check the peer no longer reports disappears from the merged state.
+func TestMergePeerLocalDropsVanished(t *testing.T) {
+	now := time.Now()
+	conf := config{hostname: activeHost}
+	s := state{checks: map[string]checkState{
+		"Check Old passive": {Status: nagiosOk, Host: passiveHost},
+		"Shared":            {Status: nagiosOk},
+	}}
+	peer := peerSnapshot{LastUpdated: now, Checks: map[string]checkState{
+		"Check Disk passive": {Status: nagiosOk, Host: passiveHost},
+	}}
+	got := mergePeerLocal(s, peer, conf, now, 10*time.Minute)
+	if _, ok := got.checks["Check Old passive"]; ok {
+		t.Error("a peer check missing from the peer report must be dropped")
+	}
+	if _, ok := got.checks["Shared"]; !ok {
+		t.Error("a non-peer check must be kept")
+	}
+	if _, ok := got.checks["Check Disk passive"]; !ok {
+		t.Error("the reported peer check must be merged")
 	}
 }

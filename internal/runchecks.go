@@ -96,6 +96,10 @@ func reuseCheckResult(check namedCheck, previous map[string]checkState, deps dep
 	}, true
 }
 
+// runCheck waits for check's dependencies and runs it, retrying a non-OK
+// result up to retries times. Every wait (random spread, retry interval)
+// ends with ctx, so a run never outlives its deadline by sleeping; a retry
+// that no longer fits keeps the last result.
 func runCheck(ctx context.Context, limitCh chan struct{}, deps dependency,
 	check namedCheck, conf config, retries int,
 ) checkResult {
@@ -107,31 +111,50 @@ func runCheck(ctx context.Context, limitCh chan struct{}, deps dependency,
 	if check.RandomSpread > 0 {
 		d := time.Duration(rand.Intn(check.RandomSpread)) * time.Second
 		log.Printf("Sleeping %v before running %s", d, check.name)
-		time.Sleep(d)
+		if err := sleepCtx(ctx, d); err != nil {
+			deps.notOk(check.name)
+			return check.skip("Run deadline reached before the check started")
+		}
 	}
 
-	limitCh <- struct{}{}
-
-	checkCtx, cancel := context.WithTimeout(ctx,
-		time.Duration(conf.CheckTimeoutS)*time.Second)
-	defer cancel()
-
-	checkResult := check.run(checkCtx)
-
-	if checkResult.status != nagiosOk && retries > 0 {
-		<-limitCh
+	result := runCheckOnce(ctx, limitCh, check, conf)
+	for ; result.status != nagiosOk && retries > 0; retries-- {
 		retryDuration := time.Duration(check.RetryInterval) * time.Second
-		time.Sleep(retryDuration)
+		if err := sleepCtx(ctx, retryDuration); err != nil {
+			log.Printf("Not retrying %s: %v", check.name, err)
+			break
+		}
 		log.Printf("Retrying %s after %v", check.name, retryDuration)
-		return runCheck(ctx, limitCh, deps, check, conf, retries-1)
+		result = runCheckOnce(ctx, limitCh, check, conf)
 	}
 
-	if checkResult.status == nagiosCritical {
+	if result.status == nagiosCritical {
 		deps.notOk(check.name)
 	} else {
 		deps.ok(check.name)
 	}
+	return result
+}
 
-	<-limitCh
-	return checkResult
+// runCheckOnce runs check once within the CheckConcurrency limit and its
+// CheckTimeoutS.
+func runCheckOnce(ctx context.Context, limitCh chan struct{}, check namedCheck, conf config) checkResult {
+	limitCh <- struct{}{}
+	defer func() { <-limitCh }()
+
+	checkCtx, cancel := context.WithTimeout(ctx, time.Duration(conf.CheckTimeoutS)*time.Second)
+	defer cancel()
+	return check.run(checkCtx)
+}
+
+// sleepCtx sleeps for d or until ctx ends, returning ctx's error then.
+func sleepCtx(ctx context.Context, d time.Duration) error {
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-t.C:
+		return nil
+	}
 }

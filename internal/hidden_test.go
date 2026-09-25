@@ -50,7 +50,8 @@ func TestMarkHidden(t *testing.T) {
 		"Prometheus: Watchdog": {Status: nagiosCritical, PrevStatus: nagiosOk},
 		"Prometheus: Fine":     {Status: nagiosOk},
 		"Check Plain":          {Status: nagiosCritical},
-		"Check HTTPS f3s":      {Status: nagiosWarning, PrevStatus: nagiosWarning},
+		"Check HTTPS f3s":      {Status: nagiosWarning, PrevStatus: nagiosOk},
+		"Prometheus: Old":      {Status: nagiosCritical, PrevStatus: nagiosCritical},
 	}}
 	s.markHidden(conf)
 
@@ -59,6 +60,7 @@ func TestMarkHidden(t *testing.T) {
 		"Prometheus: Fine":     false, // OK is never hidden
 		"Check Plain":          false, // not muted
 		"Check HTTPS f3s":      true,
+		"Prometheus: Old":      false, // CRITICAL before the mute began
 	}
 	for name, hidden := range want {
 		if s.checks[name].Hidden != hidden {
@@ -95,6 +97,34 @@ func TestWatchdogOvernightMuteNoRecoveryMail(t *testing.T) {
 		runOnce(s, conf, map[string]nagiosCode{wd: step.status})
 		if got := s.hasCriticalChange(conf); got != step.mail {
 			t.Errorf("%s: hasCriticalChange = %v, want %v (%+v)", step.desc, got, step.mail, s.checks[wd])
+		}
+	}
+}
+
+// A CRITICAL that was mailed before the mute began is not hidden by it: its
+// recovery mails, whether it comes after the unmute or during the mute.
+func TestPreMuteCriticalRecoveryMails(t *testing.T) {
+	const wd = "Prometheus: Watchdog"
+	for _, recoverMuted := range []bool{false, true} {
+		conf, marker := muteConf(t)
+		s := state{checks: map[string]checkState{}}
+		runOnce(s, conf, map[string]nagiosCode{wd: nagiosOk})
+		runOnce(s, conf, map[string]nagiosCode{wd: nagiosCritical})
+		if !s.hasCriticalChange(conf) {
+			t.Fatal("OK -> CRITICAL before the mute must mail")
+		}
+		setMarker(t, marker, true)
+		runOnce(s, conf, map[string]nagiosCode{wd: nagiosCritical})
+		if s.checks[wd].Hidden {
+			t.Fatalf("a CRITICAL older than the mute must not become hidden: %+v", s.checks[wd])
+		}
+		if s.hasCriticalChange(conf) {
+			t.Fatal("an unchanged CRITICAL must not mail")
+		}
+		setMarker(t, marker, recoverMuted)
+		runOnce(s, conf, map[string]nagiosCode{wd: nagiosOk})
+		if !s.hasCriticalChange(conf) {
+			t.Errorf("recovery (muted=%v) of a mailed CRITICAL must mail: %+v", recoverMuted, s.checks[wd])
 		}
 	}
 }

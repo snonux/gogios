@@ -60,6 +60,8 @@ internal/           # Core implementation
   hostlocal.go      # Host-local checks (Local) across the failover peers
   suppress.go       # OnlyIfNotExists mutes and the Hidden flag
   lock.go           # Run lock (StateDir/gogios.lock)
+  runlimits.go      # Watchdog, stuck-lock alert, stale temp cleanup
+  peer_local_check.go # "Gogios peer host checks" (peer report availability)
   atomicfile.go     # Atomic state/report writes
 ```
 

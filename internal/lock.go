@@ -4,8 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"syscall"
 	"time"
 )
@@ -26,6 +29,8 @@ var errRunLocked = errors.New("another gogios run holds the lock")
 // false it fails with errRunLocked when the lock is taken; with wait true it
 // retries until ctx ends. The lock is tied to the open descriptor, so the
 // kernel releases it even if the process dies without calling release.
+// The holder writes its PID into the file on acquiring it, which also sets
+// the file's mtime to the acquisition time (see runLockHolder).
 func acquireRunLock(ctx context.Context, stateDir string, wait bool) (func(), error) {
 	if err := os.MkdirAll(stateDir, 0o755); err != nil {
 		return nil, fmt.Errorf("create state directory %s: %w", stateDir, err)
@@ -43,6 +48,7 @@ func acquireRunLock(ctx context.Context, stateDir string, wait bool) (func(), er
 	for {
 		err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB)
 		if err == nil {
+			recordLockHolder(f)
 			return release, nil
 		}
 		if !errors.Is(err, syscall.EWOULDBLOCK) {
@@ -60,4 +66,33 @@ func acquireRunLock(ctx context.Context, stateDir string, wait bool) (func(), er
 		case <-time.After(runLockPoll):
 		}
 	}
+}
+
+// recordLockHolder replaces the lock file's content by this process's PID.
+// Failing to do so is harmless for the lock itself, so it is only logged.
+func recordLockHolder(f *os.File) {
+	if err := f.Truncate(0); err != nil {
+		log.Println("warning: truncate run lock:", err)
+		return
+	}
+	if _, err := f.WriteAt([]byte(strconv.Itoa(os.Getpid())+"\n"), 0); err != nil {
+		log.Println("warning: record run lock holder:", err)
+	}
+}
+
+// runLockHolder returns the PID recorded in StateDir's lock file (0 when
+// unreadable) and since when it has been held: the file's mtime, which the
+// holder bumped when it took the lock.
+func runLockHolder(stateDir string) (int, time.Time, error) {
+	path := filepath.Join(stateDir, runLockFile)
+	info, err := os.Stat(path)
+	if err != nil {
+		return 0, time.Time{}, fmt.Errorf("stat run lock: %w", err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return 0, info.ModTime(), fmt.Errorf("read run lock: %w", err)
+	}
+	pid, _ := strconv.Atoi(strings.TrimSpace(string(data)))
+	return pid, info.ModTime(), nil
 }

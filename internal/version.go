@@ -2,7 +2,7 @@ package internal
 
 import "fmt"
 
-const Version = "v1.6.0"
+const Version = "v1.7.0"
 
 // Homepage is the canonical public repository URL on GitHub.
 const Homepage = "https://github.com/snonux/gogios"

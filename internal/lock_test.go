@@ -83,7 +83,7 @@ func TestRunSkipsWhileLocked(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := Run(context.Background(), cfg, false, false); err != nil {
+	if err := Run(context.Background(), RunOptions{ConfigFile: cfg, LockWait: time.Second, Timeout: time.Minute}); err != nil {
 		t.Fatalf("locked plain run: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(dir, "state.json")); !os.IsNotExist(err) {
@@ -91,7 +91,7 @@ func TestRunSkipsWhileLocked(t *testing.T) {
 	}
 	release()
 
-	if err := Run(context.Background(), cfg, false, false); err != nil {
+	if err := Run(context.Background(), RunOptions{ConfigFile: cfg, LockWait: time.Second, Timeout: time.Minute}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(filepath.Join(dir, "state.json")); err != nil {

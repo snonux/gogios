@@ -7,6 +7,9 @@ import (
 	"time"
 )
 
+// notifyStateFile is the notification state's file name in StateDir.
+const notifyStateFile = "notify_state.json"
+
 // notifyState tracks the last notification timestamp and the check states at that time.
 // This enables notification batching: Gogios can suppress emails until the configured
 // interval has elapsed AND there's been an actual state change since the last notification.
@@ -20,7 +23,7 @@ type notifyState struct {
 // if no previous state exists (first run scenario).
 func newNotifyState(stateDir string) (notifyState, error) {
 	ns := notifyState{
-		stateFile:   filepath.Join(stateDir, "notify_state.json"),
+		stateFile:   filepath.Join(stateDir, notifyStateFile),
 		CheckStates: make(map[string]int),
 	}
 

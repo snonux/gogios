@@ -71,8 +71,8 @@ func newState(conf config) (state, error) {
 	}
 
 	var obsolete []string
-	for name := range s.checks {
-		if _, ok := conf.Checks[name]; !ok && !strings.HasPrefix(name, "Prometheus") {
+	for name, cs := range s.checks {
+		if !conf.keepsUnconfigured(name, cs) {
 			obsolete = append(obsolete, name)
 		}
 	}
@@ -83,6 +83,20 @@ func newState(conf config) (state, error) {
 	}
 
 	return s, nil
+}
+
+// keepsUnconfigured reports whether newState keeps the persisted check name,
+// cs: configured checks, Prometheus alerts, and with a peer (PeerURL) the
+// peer's host-local checks and peerLocalCheck, which the active node must
+// still have when the peer becomes unreachable (see mergePeer).
+func (conf config) keepsUnconfigured(name string, cs checkState) bool {
+	if _, ok := conf.Checks[name]; ok || strings.HasPrefix(name, "Prometheus") {
+		return true
+	}
+	if conf.PeerURL == "" {
+		return false
+	}
+	return name == peerLocalCheck || conf.isPeerLocal(name, cs)
 }
 
 // update records result as the check's current state. The previous status

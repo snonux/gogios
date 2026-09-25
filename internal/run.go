@@ -3,31 +3,68 @@ package internal
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log"
+	"os"
 	"path/filepath"
 	"time"
 )
 
+// RunOptions are the command-line settings of one run.
+type RunOptions struct {
+	ConfigFile string
+	Renotify   bool
+	Force      bool
+	// LockWait bounds how long -renotify and -force wait for the run lock.
+	LockWait time.Duration
+	// Timeout bounds the checks once the lock is held. It starts only
+	// then, so time spent waiting for a slow run does not eat into the
+	// check budget (which timed checks out as false CRITICALs).
+	Timeout time.Duration
+}
+
 // Run performs one Gogios run: elect the checker, collect, persist, notify
 // and publish the reports. Runs are serialised by a lock in StateDir: a plain
 // run skips when another run holds it (that run checks anyway), while
-// -renotify and -force wait for it, since their mail must not be lost.
-func Run(ctx context.Context, configFile string, renotify, force bool) error {
-	conf, err := newConfig(configFile)
+// -renotify and -force wait for it up to LockWait, since their mail must not
+// be lost. A skip is loud when the lock is held for longer than any healthy
+// run can take (see handleLockedRun). Once locked, a watchdog ends the
+// process after Timeout plus runGrace, so no hang can hold the lock for good.
+func Run(ctx context.Context, opts RunOptions) error {
+	conf, err := newConfig(opts.ConfigFile)
 	if err != nil {
 		return err
 	}
 
-	release, err := acquireRunLock(ctx, conf.StateDir, renotify || force)
+	lockCtx, cancelLock := context.WithTimeout(ctx, opts.LockWait)
+	release, err := acquireRunLock(lockCtx, conf.StateDir, opts.Renotify || opts.Force)
+	cancelLock()
 	if errors.Is(err, errRunLocked) {
-		log.Println("Skipping run:", err)
-		return nil
+		return handleLockedRun(conf, time.Now(), opts.Timeout+runGrace+lockStaleMargin,
+			func(subject, body string) error { return notify(conf, subject, body) })
 	}
 	if err != nil {
 		return err
 	}
 	defer release()
 
+	stop := startWatchdog(opts.Timeout+runGrace, func() {
+		fmt.Fprintf(os.Stderr, "gogios: run exceeded %v, exiting to release the run lock\n", opts.Timeout+runGrace)
+		os.Exit(3)
+	})
+	defer stop()
+	removeStaleTemps(conf)
+
+	runCtx, cancelRun := context.WithTimeout(ctx, opts.Timeout)
+	defer cancelRun()
+	runLocked(runCtx, conf, opts.Renotify, opts.Force)
+	return nil
+}
+
+// runLocked is one run under the run lock. Only collecting honours ctx: persisting, mailing
+// and publishing the results must happen even when the checks used up the
+// run's time, and they are bounded on their own (smtpTimeout, local I/O).
+func runLocked(ctx context.Context, conf config, renotify, force bool) {
 	if err := conf.sanityCheck(); err != nil {
 		notifyError(conf, err)
 	}
@@ -57,7 +94,6 @@ func Run(ctx context.Context, configFile string, renotify, force bool) error {
 	}
 
 	notifyAndPublish(state, conf, decision, notifyStateData, renotify, force)
-	return nil
 }
 
 // notifyAndPublish mails the report when the checks this node owns warrant
@@ -85,7 +121,8 @@ func notifyAndPublish(state state, conf config, decision peerDecision, ns notify
 }
 
 // collect runs the checks. The elected checker runs every check and adds the
-// peer's host-local results; a passive node runs only its host-local checks
+// peer's host-local results (UNKNOWN when the peer is unreachable, see
+// mergePeer); a passive node runs only its host-local checks
 // (not even -force makes it run the others) on top of the mirrored state of
 // the active peer.
 func collect(ctx context.Context, state state, conf config, decision peerDecision) state {
@@ -100,12 +137,8 @@ func collect(ctx context.Context, state state, conf config, decision peerDecisio
 		return state
 	}
 	peer, err := fetchPeerSnapshot(ctx, conf.PeerURL)
-	if err != nil {
-		log.Println("Not merging peer host-local checks:", err)
-		return state
-	}
 	staleAfter := time.Duration(conf.PeerStaleThresholdS) * time.Second
-	return mergePeerLocal(state, peer, conf, time.Now(), staleAfter)
+	return mergePeer(state, peer, err, conf, time.Now(), staleAfter)
 }
 
 // collectPassive mirrors the active peer's state, keeps this node's own
