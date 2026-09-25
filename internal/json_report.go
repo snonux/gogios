@@ -3,7 +3,6 @@ package internal
 import (
 	"encoding/json"
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -43,6 +42,8 @@ type jsonCheck struct {
 	PrevStatus            string `json:"prevStatus,omitempty"`
 	Output                string `json:"output"`
 	FederatedFrom         string `json:"federatedFrom,omitempty"`
+	Host                  string `json:"host,omitempty"`   // node that ran a host-local check
+	Hidden                bool   `json:"hidden,omitempty"` // status hidden by a mute, see markHidden
 	Epoch                 int64  `json:"epoch"`
 	LastCheckedAgeSeconds int64  `json:"lastCheckedAgeSeconds,omitempty"`
 }
@@ -53,27 +54,14 @@ func persistJSONReport(state state, subject string, conf config, checksActive bo
 		return nil
 	}
 
-	jsonFile := jsonReportPath(htmlFile)
-	jsonDir := filepath.Dir(jsonFile)
-	if err := os.MkdirAll(jsonDir, 0o755); err != nil {
-		return fmt.Errorf("failed to create directory %s: %w", jsonDir, err)
-	}
-
-	tmpFile := jsonFile + ".tmp"
-	f, err := os.Create(tmpFile)
+	data, err := json.MarshalIndent(state.jsonReport(subject, conf, checksActive), "", "  ")
 	if err != nil {
-		return fmt.Errorf("failed to create temp file: %w", err)
+		return fmt.Errorf("failed to encode JSON report: %w", err)
 	}
-	defer f.Close()
-
-	report := state.jsonReport(subject, conf, checksActive)
-	encoder := json.NewEncoder(f)
-	encoder.SetIndent("", "  ")
-	if err := encoder.Encode(report); err != nil {
-		return fmt.Errorf("failed to write JSON: %w", err)
+	if err := writeFileAtomic(jsonReportPath(htmlFile), append(data, '\n'), 0o644); err != nil {
+		return fmt.Errorf("persist JSON report: %w", err)
 	}
-
-	return os.Rename(tmpFile, jsonFile)
+	return nil
 }
 
 func jsonReportPath(htmlPath string) string {
@@ -163,6 +151,8 @@ func (s state) jsonReportSuppressed(conf config) []jsonCheck {
 			Status:        nagiosCode(cs.Status).Str(),
 			Output:        cs.Output,
 			FederatedFrom: cs.FederatedFrom,
+			Host:          cs.Host,
+			Hidden:        cs.Hidden,
 			Epoch:         cs.Epoch,
 		})
 	}
@@ -189,6 +179,8 @@ func (s state) jsonReportBy(now time.Time, showStatusChange, isStaleReport bool,
 			Status:        nagiosCode(cs.Status).Str(),
 			Output:        cs.Output,
 			FederatedFrom: cs.FederatedFrom,
+			Host:          cs.Host,
+			Hidden:        cs.Hidden,
 			Epoch:         cs.Epoch,
 		}
 		if showStatusChange && cs.changed() {

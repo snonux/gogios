@@ -165,6 +165,8 @@ If you want to execute checks only when another check succeeded (status OK), use
 
 `RunInterval` is an optional check configuration parameter. It defines the minimum interval in seconds between two executions of a check. This is useful if you run gogios more frequently than you want to run a specific check.
 
+`Local` is an optional check configuration parameter. Set it to `true` for a check of the node Gogios runs on (disk, load, swap, ...). With peer failover (see below), a passive node still runs and notifies for its `Local` checks.
+
 For remote checks, use the `check_nrpe` plugin. You also need to have the NRPE server set up correctly on the target host (out of scope for this document).
 
 The `state.json` file mentioned above keeps track of the monitoring state and check results between Gogios runs, enabling Gogios only to send email notifications when there are changes in the check status.
@@ -255,6 +257,8 @@ rm /tmp/k8s_maintenance
 
 The file's modification time is checked against the max age, so even if you forget to remove the file, alerts will resume after the configured period.
 
+A non-OK status that was hidden by a suppression file stays marked as hidden (`hidden` in the JSON report) until the check's status changes, even after the file is removed. Leaving a hidden status (e.g. the Watchdog or an f3s HTTPS check recovering the morning after an overnight shutdown) is not mailed immediately, since nobody was told about the problem in the first place. Entering CRITICAL from a hidden status still is. A status that stays CRITICAL after the unmute is listed as unhandled and re-notified by the `-renotify` run.
+
 ## Running Gogios
 
 Now it is time to give it a first run. On OpenBSD, do:
@@ -274,6 +278,8 @@ Type `doas crontab -e -u _gogios` and press Enter to open the crontab file for t
 ```
 
 Gogios is now configured to run every five minutes from 8 AM to 10 PM via CRON as the `_gogios` user. It will execute checks and send monitoring status updates via email whenever a check status changes according to your configuration. Additionally, Gogios will run once at 7 AM every morning to re-notify all unhandled alerts as a reminder. Furthermore, Gogios will also run every Sunday morning at 3 AM and will send out a notification even if all checks are in the state OK, providing ensurance that the email server is still functional.
+
+Runs are serialised by an exclusive lock on `StateDir/gogios.lock`: a plain run skips while another run holds it (the running one checks anyway), while `-renotify` and `-force` wait for the lock until their `-timeout`, so their mail is not lost. All state and report files are replaced atomically. Offsetting the `-renotify` and `-force` minutes from the plain runs (e.g. `2 7 * * *`) keeps them from waiting at all.
 
 Notice the `-s` in the first CRON tab entry. This is incredibly useful for cron jobs that shouldn't run twice in parallel. If the job duration is longer than usual, you are ensured that it will never start a new instance until the previous one is done. This feature exists only in OpenBSD's CRON, so don't use it if you are using another OS.
 
@@ -298,7 +304,7 @@ The standby is taken, in order, from:
 2. `DNSStandbyFile` (default `/var/nsd/run/current_standby`): a file holding the standby's hostname.
 3. Week parity: even week secondary, odd week primary.
 
-A passive node runs no plugins and sends no mail (except with `-force`). It mirrors the active peer's check state from the peer's JSON report into its own state and status pages, so both instances publish the same current view, and a node that takes over starts from recent state.
+A passive node mirrors the active peer's check state from the peer's JSON report into its own state and status pages, so both instances publish the same view (the peer's report as of its previous run, i.e. up to one cron interval behind), and a node that takes over starts from recent state. It runs only its host-local checks, marked `"Local": true` (disk, load, swap, ... of the node itself, which only that node can check), and mails only for those (plus everything with `-force`). The active node merges the peer's host-local results from the peer's report (`host` in the JSON report), so both reports list the host checks of both nodes; a check is notified only by the node that ran it. When the peer's report goes stale, its host-local checks turn UNKNOWN. Host-local check names must differ between the peers (e.g. `Check Disk <hostname>`), and they should not depend on non-local checks.
 
 # But why?
 

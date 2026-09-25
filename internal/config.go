@@ -46,6 +46,9 @@ type config struct {
 	PrometheusOnlyIfNotExists     string   `json:"PrometheusOnlyIfNotExists,omitempty"`     // Suppress Prometheus alerts if this file exists and is recent
 	PrometheusOnlyIfNotExistsMaxS int      `json:"PrometheusOnlyIfNotExistsMaxS,omitempty"` // Max age in seconds for suppression file (default 86400)
 	Checks                        map[string]check
+	// hostname is this node's hostname (os.Hostname), which tags its
+	// host-local check results; not configurable.
+	hostname string
 }
 
 func newConfig(configFile string) (config, error) {
@@ -67,11 +70,13 @@ func newConfig(configFile string) (config, error) {
 		return conf, err
 	}
 
+	hostname, err := os.Hostname()
+	if err != nil {
+		return conf, fmt.Errorf("hostname: %w", err)
+	}
+	conf.hostname = hostname
+
 	if conf.SMTPServer == "" {
-		hostname, err := os.Hostname()
-		if err != nil {
-			log.Fatal(err)
-		}
 		conf.SMTPServer = fmt.Sprintf("%s:25", hostname)
 		log.Println("Set SMTPServer to " + conf.SMTPServer)
 	}
@@ -91,10 +96,6 @@ func newConfig(configFile string) (config, error) {
 		}
 
 		if conf.PeerPrimaryName == "" {
-			hostname, err := os.Hostname()
-			if err != nil {
-				log.Fatal(err)
-			}
 			conf.PeerPrimaryName = hostname
 		}
 

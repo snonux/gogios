@@ -18,6 +18,11 @@ func checksFromSections(sections jsonSections) map[string]checkState {
 				Epoch:         jc.Epoch,
 				Output:        jc.Output,
 				FederatedFrom: jc.FederatedFrom,
+				Host:          jc.Host,
+				// The peer's Hidden is this copy's previous one, so the
+				// passive node's markHidden keeps a hidden status hidden.
+				Hidden:     jc.Hidden,
+				PrevHidden: jc.Hidden,
 			}
 		}
 	}

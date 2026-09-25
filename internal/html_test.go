@@ -466,13 +466,13 @@ func TestW3CCompliance(t *testing.T) {
 
 	// Verify no common HTML errors
 	commonErrors := []string{
-		"<<",     // Double tag opening
-		">>",     // Double tag closing
-		"< ",     // Space after tag opening
-		" >",     // Space before tag closing (in tag name)
-		"<//>",   // Malformed closing tag
-		"</ >",   // Empty closing tag
-		"< >",    // Empty tag
+		"<<",   // Double tag opening
+		">>",   // Double tag closing
+		"< ",   // Space after tag opening
+		" >",   // Space before tag closing (in tag name)
+		"<//>", // Malformed closing tag
+		"</ >", // Empty closing tag
+		"< >",  // Empty tag
 	}
 
 	for _, err := range commonErrors {

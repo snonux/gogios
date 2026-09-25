@@ -38,8 +38,9 @@ signing, and uploading to the custom package repo now live in
 cd ~/git/conf/packages && make pkg-openbsd NAME=gogios SRC=/home/paul/git/gogios
 cd ~/git/conf/packages && make pkg-freebsd NAME=gogios SRC=/home/paul/git/gogios
 ```
-Installing onto the frontends is then done via `rex gogios_install` from
-`~/git/conf/frontends` (see the `gogios` skill for the full workflow).
+Installing onto the frontends is then done via
+`./gonf.sh cluster frontends frontends_gogios` from `~/git/conf` (see the
+`gogios` skill for the full workflow).
 
 ## Project Structure
 
@@ -56,6 +57,10 @@ internal/           # Core implementation
   run.go            # Main run logic
   runchecks.go      # Check orchestration
   state.go          # State persistence
+  hostlocal.go      # Host-local checks (Local) across the failover peers
+  suppress.go       # OnlyIfNotExists mutes and the Hidden flag
+  lock.go           # Run lock (StateDir/gogios.lock)
+  atomicfile.go     # Atomic state/report writes
 ```
 
 ## Code Conventions

@@ -91,24 +91,11 @@ func (ns *notifyState) recordNotification(currentState state) error {
 	return ns.persist()
 }
 
-// persist writes the notification state to disk atomically using a temp file.
+// persist writes the notification state to disk atomically.
 func (ns notifyState) persist() error {
-	stateDir := filepath.Dir(ns.stateFile)
-	if _, err := os.Stat(stateDir); os.IsNotExist(err) {
-		if err := os.MkdirAll(stateDir, 0o755); err != nil {
-			return err
-		}
-	}
-
 	data, err := json.Marshal(ns)
 	if err != nil {
 		return err
 	}
-
-	tmpFile := ns.stateFile + ".tmp"
-	if err := os.WriteFile(tmpFile, data, 0o644); err != nil {
-		return err
-	}
-
-	return os.Rename(tmpFile, ns.stateFile)
+	return writeFileAtomic(ns.stateFile, data, 0o644)
 }

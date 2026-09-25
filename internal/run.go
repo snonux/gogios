@@ -2,16 +2,31 @@ package internal
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"log"
-	"os"
+	"path/filepath"
+	"time"
 )
 
+// Run performs one Gogios run: elect the checker, collect, persist, notify
+// and publish the reports. Runs are serialised by a lock in StateDir: a plain
+// run skips when another run holds it (that run checks anyway), while
+// -renotify and -force wait for it, since their mail must not be lost.
 func Run(ctx context.Context, configFile string, renotify, force bool) error {
 	conf, err := newConfig(configFile)
 	if err != nil {
 		return err
 	}
+
+	release, err := acquireRunLock(ctx, conf.StateDir, renotify || force)
+	if errors.Is(err, errRunLocked) {
+		log.Println("Skipping run:", err)
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	defer release()
 
 	if err := conf.sanityCheck(); err != nil {
 		notifyError(conf, err)
@@ -35,46 +50,81 @@ func Run(ctx context.Context, configFile string, renotify, force bool) error {
 		log.Println(decision.Reason)
 	}
 	state = collect(ctx, state, conf, decision)
+	state.markHidden(conf)
 
 	if err := state.persist(); err != nil {
 		notifyError(conf, err)
 	}
 
+	notifyAndPublish(state, conf, decision, notifyStateData, renotify, force)
+	return nil
+}
+
+// notifyAndPublish mails the report when the checks this node owns warrant
+// it (see ownedBy, notifyTrigger, gateNotification) and publishes the text,
+// HTML and JSON reports of the full state.
+func notifyAndPublish(state state, conf config, decision peerDecision, ns notifyState, renotify, force bool) {
 	passive := !decision.Active
-	subject, body, doNotify := state.report(renotify, force, conf.StatusPageURL, conf, passive, decision.Reason)
-	doNotify = gateNotification(doNotify, force, passive, conf, notifyStateData, state)
+	subject, body := state.report(conf.StatusPageURL, conf, passive, decision.Reason)
+	owned := state.ownedBy(conf.hostname, passive)
+	doNotify := owned.notifyTrigger(renotify, force, conf)
+	doNotify = gateNotification(doNotify, force, conf, ns, owned)
 
 	if doNotify {
+		// A failed mail still publishes the reports below: a report left
+		// stale would make the peer take this node for dead.
 		if err := notify(conf, subject, body); err != nil {
 			log.Println("error:", err)
-			return nil
-		}
-		// Record notification timestamp and state snapshot for batching
-		if err := notifyStateData.recordNotification(state); err != nil {
+		} else if err := ns.recordNotification(owned); err != nil {
+			// Record notification timestamp and state snapshot for batching
 			log.Println("warning: failed to save notification state:", err)
 		}
 	}
 
 	publishReports(state, subject, body, conf, decision.Active)
-	return nil
 }
 
-// collect runs the checks on the elected checker. A passive node never runs
-// plugins, not even with -force (which only forces notifications from the
-// existing state); it mirrors the active peer's state instead.
+// collect runs the checks. The elected checker runs every check and adds the
+// peer's host-local results; a passive node runs only its host-local checks
+// (not even -force makes it run the others) on top of the mirrored state of
+// the active peer.
 func collect(ctx context.Context, state state, conf config, decision peerDecision) state {
 	if !decision.Active {
-		log.Println("Skipping checks: peer is active")
-		return mirrorPeerState(state, decision.Peer)
+		return collectPassive(ctx, state, conf, decision.Peer)
 	}
 	state = runChecks(ctx, state, conf)
+	state.tagLocal(conf)
 	state = mergePrometheusAlerts(ctx, state, conf)
-	return mergeFederated(ctx, state, conf)
+	state = mergeFederated(ctx, state, conf)
+	if conf.PeerURL == "" {
+		return state
+	}
+	peer, err := fetchPeerSnapshot(ctx, conf.PeerURL)
+	if err != nil {
+		log.Println("Not merging peer host-local checks:", err)
+		return state
+	}
+	staleAfter := time.Duration(conf.PeerStaleThresholdS) * time.Second
+	return mergePeerLocal(state, peer, conf, time.Now(), staleAfter)
 }
 
-// gateNotification applies notification batching and the passive-node rule
-// to the report's notify decision.
-func gateNotification(doNotify, force, passive bool, conf config, ns notifyState, state state) bool {
+// collectPassive mirrors the active peer's state, keeps this node's own
+// host-local results from its previous run (so their status changes are
+// judged against this node's last result, not the peer's older copy) and
+// runs the host-local checks.
+func collectPassive(ctx context.Context, state state, conf config, peer peerSnapshot) state {
+	log.Println("Running host-local checks only: peer is active")
+	own := state.ownLocalChecks(conf)
+	state = mirrorPeerState(state, peer)
+	state.restoreOwnLocal(own, conf.hostname)
+	state = runChecks(ctx, state, conf.localOnly())
+	state.tagLocal(conf)
+	return state
+}
+
+// gateNotification applies notification batching to the notify decision.
+// state holds the checks this node notifies for (see ownedBy).
+func gateNotification(doNotify, force bool, conf config, ns notifyState, state state) bool {
 	// Apply notification batching when MinNotifyIntervalS is configured.
 	// Force flag bypasses batching to allow immediate notifications when needed.
 	if doNotify && conf.MinNotifyIntervalS > 0 && !force {
@@ -89,13 +139,6 @@ func gateNotification(doNotify, force, passive bool, conf config, ns notifyState
 			doNotify = false
 			log.Println("Notification suppressed: minimum interval not elapsed")
 		}
-	}
-
-	if passive && !force {
-		doNotify = false
-		log.Println("Notification suppressed: peer is active")
-	} else if passive && force {
-		log.Println("Force notify while passive: skipping checks but allowing notifications")
 	}
 	return doNotify
 }
@@ -118,21 +161,7 @@ func publishReports(state state, subject, body string, conf config, checksActive
 	}
 }
 
+// persistReport atomically replaces StateDir/report.txt with the text report.
 func persistReport(subject, body string, conf config) error {
-	reportFile := fmt.Sprintf("%s/report.txt", conf.StateDir)
-	tmpFile := fmt.Sprintf("%s.tmp", reportFile)
-
-	f, err := os.Create(tmpFile)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-
-	if _, err = f.WriteString(fmt.Sprintf("%s\n\n", subject)); err != nil {
-		return err
-	}
-	if _, err = f.WriteString(body); err != nil {
-		return err
-	}
-	return os.Rename(tmpFile, reportFile)
+	return writeFileAtomic(filepath.Join(conf.StateDir, "report.txt"), []byte(subject+"\n\n"+body), 0o644)
 }

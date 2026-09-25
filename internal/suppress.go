@@ -57,3 +57,18 @@ func isCheckSuppressed(name string, conf config) bool {
 	}
 	return false
 }
+
+// markHidden sets Hidden on every check whose non-OK status is hidden from
+// the reports and mails: suppressed right now, or suppressed when the
+// status began and unchanged since (PrevHidden and not changed). The flag
+// is sticky across the unmute because a check can still hold the status it
+// had overnight when the marker goes away (the Watchdog stays CRITICAL
+// until Prometheus is back), and its later recovery is just as uninteresting.
+// An OK check is never hidden. Run it after collecting, before persisting.
+func (s state) markHidden(conf config) {
+	for name, cs := range s.checks {
+		stillHidden := cs.PrevHidden && !cs.changed()
+		cs.Hidden = cs.Status != nagiosOk && (stillHidden || isCheckSuppressed(name, conf))
+		s.checks[name] = cs
+	}
+}

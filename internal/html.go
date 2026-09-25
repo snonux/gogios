@@ -4,55 +4,20 @@ import (
 	"fmt"
 	"html"
 	"log"
-	"os"
-	"path/filepath"
 	"strings"
 	"time"
 )
 
-// persistHTMLReport generates and persists the HTML status page.
-// Mirrors persistReport() pattern from run.go with atomic write.
+// persistHTMLReport generates and atomically replaces the HTML status page.
 func persistHTMLReport(state state, subject string, conf config) error {
 	htmlFile := conf.HTMLStatusFile
 	if htmlFile == "" {
 		log.Println("debug: HTMLStatusFile is empty, skipping HTML report generation")
 		return nil
 	}
-
-	log.Println("debug: HTMLStatusFile set to", htmlFile)
-	htmlDir := filepath.Dir(htmlFile)
-
-	// Auto-create directory if it doesn't exist
-	// CLAUDE: Only create it when it doesnt exist yet
-	if err := os.MkdirAll(htmlDir, 0o755); err != nil {
-		log.Println("debug: error creating directory:", err)
-		return fmt.Errorf("failed to create directory %s: %w", htmlDir, err)
+	if err := writeFileAtomic(htmlFile, []byte(state.htmlReport(subject, conf)), 0o644); err != nil {
+		return fmt.Errorf("persist HTML report: %w", err)
 	}
-	log.Println("debug: directory ensured at", htmlDir)
-
-	tmpFile := htmlFile + ".tmp"
-	log.Println("debug: writing to temp file", tmpFile)
-
-	f, err := os.Create(tmpFile)
-	if err != nil {
-		log.Println("debug: error creating temp file:", err)
-		return fmt.Errorf("failed to create temp file: %w", err)
-	}
-	defer f.Close()
-
-	htmlContent := state.htmlReport(subject, conf)
-	if _, err = f.WriteString(htmlContent); err != nil {
-		log.Println("debug: error writing HTML:", err)
-		return fmt.Errorf("failed to write HTML: %w", err)
-	}
-	log.Println("debug: successfully wrote HTML to temp file")
-
-	err = os.Rename(tmpFile, htmlFile)
-	if err != nil {
-		log.Println("debug: error renaming temp file to final location:", err)
-		return err
-	}
-	log.Println("debug: successfully renamed and persisted HTML report to", htmlFile)
 	return nil
 }
 

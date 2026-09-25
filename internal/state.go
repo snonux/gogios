@@ -6,7 +6,6 @@ import (
 	"io"
 	"log"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 )
@@ -17,6 +16,17 @@ type checkState struct {
 	Epoch         int64  `json:"Epoch,omitempty"`
 	Output        string `json:"Output,omitempty"`
 	FederatedFrom string `json:"FederatedFrom,omitempty"`
+	// Host is the node that ran a host-local check (check.Local); empty for
+	// every other check. A node notifies only for checks it owns (see
+	// state.ownedBy), so a peer's host-local checks are shown but never
+	// mailed twice.
+	Host string `json:"Host,omitempty"`
+	// Hidden is set while the current non-OK status is, or was when it
+	// began, hidden by a suppression marker (OnlyIfNotExists or
+	// PrometheusOnlyIfNotExists); see markHidden. PrevHidden is the
+	// previous run's Hidden, so leaving a hidden status is not news.
+	Hidden     bool `json:"Hidden,omitempty"`
+	PrevHidden bool `json:"PrevHidden,omitempty"`
 }
 
 func (cs checkState) federated() bool {
@@ -75,6 +85,9 @@ func newState(conf config) (state, error) {
 	return s, nil
 }
 
+// update records result as the check's current state. The previous status
+// and Hidden flag become PrevStatus and PrevHidden. Host starts empty; the
+// collector tags host-local results afterwards (see tagLocal).
 func (s state) update(result checkResult) {
 	prevStatus := nagiosUnknown
 	prevState, ok := s.checks[result.name]
@@ -82,7 +95,14 @@ func (s state) update(result checkResult) {
 		prevStatus = prevState.Status
 	}
 
-	cs := checkState{result.status, prevStatus, result.epoch, result.output, result.federatedFrom}
+	cs := checkState{
+		Status:        result.status,
+		PrevStatus:    prevStatus,
+		Epoch:         result.epoch,
+		Output:        result.output,
+		FederatedFrom: result.federatedFrom,
+		PrevHidden:    prevState.Hidden,
+	}
 	s.checks[result.name] = cs
 	log.Println(result.name, cs)
 }
@@ -114,37 +134,31 @@ func (s state) mergeFromBytes(bytes []byte) error {
 	return s.merge(other)
 }
 
+// persist atomically replaces the state file (see writeFileAtomic), so a
+// concurrent or interrupted run never leaves a truncated state.json behind.
 func (s state) persist() error {
-	stateDir := filepath.Dir(s.stateFile)
-	if _, err := os.Stat(stateDir); os.IsNotExist(err) {
-		if err := os.MkdirAll(stateDir, 0o755); err != nil {
-			return err
-		}
-	}
-
 	jsonData, err := json.Marshal(s.checks)
 	if err != nil {
 		return err
 	}
-
-	return os.WriteFile(s.stateFile, jsonData, os.ModePerm)
+	return writeFileAtomic(s.stateFile, jsonData, 0o644)
 }
 
-// report generates the notification email content.
+// report generates the notification email subject and body.
 // statusPageURL is included as a link to the HTML status page.
 // conf is used to determine which checks should be suppressed from the report.
+// Whether to send it is decided separately by notifyTrigger.
 func (s state) report(
-	renotify, force bool,
 	statusPageURL string,
 	conf config,
 	passive bool,
 	passiveReason string,
-) (string, string, bool) {
+) (string, string) {
 	var sb strings.Builder
 
 	sb.WriteString("This is the recent Gogios report!\n\n")
 	if passive {
-		sb.WriteString("NOTE: Passive mode active, checks were skipped; the state below mirrors the active peer.\n")
+		sb.WriteString("NOTE: Passive mode active, only host-local checks ran here; the rest of the state below mirrors the active peer.\n")
 		if passiveReason != "" {
 			sb.WriteString("Reason: ")
 			sb.WriteString(passiveReason)
@@ -160,8 +174,7 @@ func (s state) report(
 
 	sb.WriteString("# Unhandled alerts:\n\n")
 	numCriticals, numWarnings, numUnknown, numOK := s.reportUnhandled(&sb, conf)
-	hasUnhandled := (numCriticals + numWarnings + numUnknown) > 0
-	if !hasUnhandled {
+	if numCriticals+numWarnings+numUnknown == 0 {
 		sb.WriteString("There are no unhandled alerts...\n\n")
 	}
 
@@ -186,16 +199,32 @@ func (s state) report(
 	subject := fmt.Sprintf("GOGIOS Report [C:%d W:%d U:%d S:%d SU:%d OK:%d]",
 		numCriticals, numWarnings, numUnknown, numStale, numSuppressed, numOK)
 
-	// Only CRITICAL-involving transitions page immediately. OK<->WARNING (and other
-	// non-critical) flips still show up in the "status changed" section above, but they
-	// wait for the daily renotify cron job instead of firing an email right away.
-	doNotify := force || (s.hasCriticalChange(conf) || (renotify && hasUnhandled))
-	return subject, sb.String(), doNotify
+	return subject, sb.String()
+}
+
+// notifyTrigger decides whether s (the checks this node owns, see ownedBy)
+// warrants a mail before batching (gateNotification). Only CRITICAL-involving
+// transitions page immediately. OK<->WARNING (and other non-critical) flips
+// still show up in the "status changed" section, but they wait for the daily
+// renotify cron job instead of firing an email right away.
+func (s state) notifyTrigger(renotify, force bool, conf config) bool {
+	return force || s.hasCriticalChange(conf) || (renotify && s.hasUnhandled(conf))
+}
+
+// hasUnhandled reports whether any check is non-OK, neither stale nor
+// suppressed: exactly what the "Unhandled alerts" section lists.
+func (s state) hasUnhandled(conf config) bool {
+	return s.countBy(conf, func(cs checkState) bool {
+		return cs.Status != nagiosOk && cs.Epoch >= s.staleEpoch
+	}) > 0
 }
 
 // hasCriticalChange reports whether any check transitioned into or out of CRITICAL
 // status since the last run. This is the sole trigger for an immediate notification;
 // transitions among OK, WARNING, and UNKNOWN are deferred to the daily renotify job.
+// Leaving a status that was hidden by a mute (PrevHidden) is not news: nobody
+// was told about it, so its "recovery" would only mail every morning after an
+// overnight f3s shutdown. Entering CRITICAL from a hidden status still counts.
 func (s state) hasCriticalChange(conf config) bool {
 	for name, cs := range s.checks {
 		if !cs.changed() {
@@ -203,6 +232,9 @@ func (s state) hasCriticalChange(conf config) bool {
 		}
 		if cs.Status != nagiosCritical && cs.PrevStatus != nagiosCritical {
 			continue
+		}
+		if cs.PrevHidden && cs.Status != nagiosCritical {
+			continue // recovery from a muted status nobody was told about
 		}
 		if cs.Status != nagiosOk && isCheckSuppressed(name, conf) {
 			continue // skip suppressed checks (OK checks are never suppressed)
