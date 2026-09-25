@@ -25,7 +25,12 @@ type config struct {
 	// DNSStandbyFile is written by dns-failover.ksh. Gogios elects the DNS
 	// standby as the sole checker when PeerURL is set. Default:
 	// /var/nsd/run/current_standby.
-	DNSStandbyFile   string `json:"DNSStandbyFile,omitempty"`
+	DNSStandbyFile string `json:"DNSStandbyFile,omitempty"`
+	// DNSStandbyRecord (e.g. "standby.example.org") names the DNS record that
+	// points at the standby. When set, Gogios resolves it and elects the peer
+	// sharing its address, before trying DNSStandbyFile. Prefer it when the
+	// DNS publisher does not maintain the role file.
+	DNSStandbyRecord string `json:"DNSStandbyRecord,omitempty"`
 	CheckTimeoutS    int
 	CheckConcurrency int
 	StaleThreshold   int      `json:"StaleThreshold,omitempty"`

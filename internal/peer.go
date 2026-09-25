@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net"
 	"net/http"
 	"net/url"
@@ -15,14 +16,30 @@ import (
 
 const defaultDNSStandbyFile = "/var/nsd/run/current_standby"
 
+// peerReport is the part of the peer's JSON report (see jsonReport) that
+// failover reads: freshness, whether it runs checks, and its check sections,
+// which a passive node mirrors.
 type peerReport struct {
-	LastUpdated  string `json:"lastUpdated"`
-	ChecksActive bool   `json:"checksActive"`
+	LastUpdated  string       `json:"lastUpdated"`
+	ChecksActive bool         `json:"checksActive"`
+	Sections     jsonSections `json:"sections"`
 }
 
 type peerSnapshot struct {
 	LastUpdated  time.Time
 	ChecksActive bool
+	// Checks is the peer's check state rebuilt from its report sections; nil
+	// when the report carries no sections (e.g. an older Gogios).
+	Checks map[string]checkState
+}
+
+// peerDecision is the outcome of the failover election. Peer is the snapshot
+// of the active peer when the local node goes passive, so the passive node
+// can publish the peer's current state instead of its own frozen one.
+type peerDecision struct {
+	Active bool
+	Reason string
+	Peer   peerSnapshot
 }
 
 // hostProber reports whether a peer hostname is reachable. Used so the DNS
@@ -30,55 +47,61 @@ type peerSnapshot struct {
 // report still advertises checksActive.
 type hostProber func(ctx context.Context, host string) error
 
-func peerActive(ctx context.Context, conf config) (bool, string) {
+// hostResolver returns the IP addresses of a hostname.
+type hostResolver func(ctx context.Context, host string) ([]string, error)
+
+// peerEnv carries the clock, identity and I/O the election depends on, so
+// tests can replace each of them.
+type peerEnv struct {
+	now      time.Time
+	hostname string
+	fetch    func(context.Context, string) (peerSnapshot, error)
+	probe    hostProber
+	resolve  hostResolver
+}
+
+func peerActive(ctx context.Context, conf config) peerDecision {
 	if conf.PeerURL == "" {
-		return true, "Peer failover: disabled (PeerURL not set)"
+		return peerDecision{Active: true, Reason: "Peer failover: disabled (PeerURL not set)"}
 	}
 
 	hostname, err := os.Hostname()
 	if err != nil {
-		return true, fmt.Sprintf("Peer failover: hostname lookup failed (%v); staying active", err)
+		return peerDecision{Active: true, Reason: fmt.Sprintf("Peer failover: hostname lookup failed (%v); staying active", err)}
 	}
 
-	return peerActiveAt(ctx, conf, time.Now(), hostname, fetchPeerSnapshot, probeHostReachable)
+	return peerActiveAt(ctx, conf, peerEnv{
+		now:      time.Now(),
+		hostname: hostname,
+		fetch:    fetchPeerSnapshot,
+		probe:    probeHostReachable,
+		resolve:  net.DefaultResolver.LookupHost,
+	})
 }
 
-func peerActiveAt(
-	ctx context.Context,
-	conf config,
-	now time.Time,
-	hostname string,
-	fetch func(context.Context, string) (peerSnapshot, error),
-	probe hostProber,
-) (bool, string) {
+// peerActiveAt elects the checker: the DNS standby always runs checks; the
+// other node goes passive only while the peer is fresh, checksActive and
+// reachable, and stays active on any doubt.
+func peerActiveAt(ctx context.Context, conf config, env peerEnv) peerDecision {
+	active := func(reason string, args ...any) peerDecision {
+		return peerDecision{Active: true, Reason: fmt.Sprintf(reason, args...)}
+	}
 	if conf.PeerURL == "" {
-		return true, "Peer failover: disabled (PeerURL not set)"
+		return active("Peer failover: disabled (PeerURL not set)")
 	}
 
-	primary := conf.PeerPrimaryName
-	if primary == "" {
-		primary = hostname
-	}
-
-	secondary := conf.PeerSecondaryName
-	if secondary == "" {
-		if parsedURL, err := url.Parse(conf.PeerURL); err == nil && parsedURL.Hostname() != "" {
-			secondary = parsedURL.Hostname()
-		}
-	}
-
+	primary, secondary := peerNames(conf, env.hostname)
 	if primary == "" || secondary == "" {
-		return true, "Peer failover: missing peer names; staying active"
+		return active("Peer failover: missing peer names; staying active")
+	}
+	if env.hostname != primary && env.hostname != secondary {
+		return active("Peer failover: local hostname %s not in [%s, %s]; staying active",
+			env.hostname, primary, secondary)
 	}
 
-	if hostname != primary && hostname != secondary {
-		return true, fmt.Sprintf("Peer failover: local hostname %s not in [%s, %s]; staying active",
-			hostname, primary, secondary)
-	}
-
-	standby := dnsStandbyName(conf, primary, secondary, now)
-	if hostname == standby {
-		return true, fmt.Sprintf("Peer failover: local host is DNS standby checker (%s)", standby)
+	standby := dnsStandbyName(ctx, conf, primary, secondary, env)
+	if env.hostname == standby {
+		return active("Peer failover: local host is DNS standby checker (%s)", standby)
 	}
 
 	staleThresholdS := conf.PeerStaleThresholdS
@@ -86,34 +109,58 @@ func peerActiveAt(
 		staleThresholdS = 600
 	}
 
-	peer, err := fetch(ctx, conf.PeerURL)
+	peer, err := env.fetch(ctx, conf.PeerURL)
 	if err != nil {
-		return true, fmt.Sprintf("Peer failover: peer check failed (%v); staying active", err)
+		return active("Peer failover: peer check failed (%v); staying active", err)
 	}
-
-	age := now.Sub(peer.LastUpdated)
-	if age > time.Duration(staleThresholdS)*time.Second {
-		return true, fmt.Sprintf("Peer failover: peer stale (%v > %ds); staying active",
-			age, staleThresholdS)
+	if age := env.now.Sub(peer.LastUpdated); age > time.Duration(staleThresholdS)*time.Second {
+		return active("Peer failover: peer stale (%v > %ds); staying active", age, staleThresholdS)
 	}
-
 	if !peer.ChecksActive {
-		return true, fmt.Sprintf("Peer failover: peer healthy but not checksActive; taking over (standby %s)", standby)
+		return active("Peer failover: peer healthy but not checksActive; taking over (standby %s)", standby)
 	}
-
-	if probe != nil {
-		if err := probe(ctx, standby); err != nil {
-			return true, fmt.Sprintf("Peer failover: DNS standby %s unreachable (%v); taking over", standby, err)
+	if env.probe != nil {
+		if err := env.probe(ctx, standby); err != nil {
+			return active("Peer failover: DNS standby %s unreachable (%v); taking over", standby, err)
 		}
 	}
 
-	return false, fmt.Sprintf("Peer failover: peer healthy and checksActive; DNS standby is %s", standby)
+	return peerDecision{
+		Reason: fmt.Sprintf("Peer failover: peer healthy and checksActive; DNS standby is %s", standby),
+		Peer:   peer,
+	}
 }
 
-// dnsStandbyName returns the FQDN that should run gogios plugin checks.
-// Prefer /var/nsd/run/current_standby from dns-failover; fall back to week parity
-// (even week → secondary, odd week → primary), matching DNS HA standby.
-func dnsStandbyName(conf config, primary, secondary string, now time.Time) string {
+// peerNames returns the configured primary and secondary peer names, falling
+// back to the local hostname and the PeerURL host.
+func peerNames(conf config, hostname string) (string, string) {
+	primary := conf.PeerPrimaryName
+	if primary == "" {
+		primary = hostname
+	}
+	secondary := conf.PeerSecondaryName
+	if secondary == "" {
+		if parsedURL, err := url.Parse(conf.PeerURL); err == nil && parsedURL.Hostname() != "" {
+			secondary = parsedURL.Hostname()
+		}
+	}
+	return primary, secondary
+}
+
+// dnsStandbyName returns the FQDN that should run gogios plugin checks. In
+// order of preference: the peer whose address DNSStandbyRecord resolves to
+// (the live DNS answer, which cannot go stale when a DNS publisher stops
+// writing role files), the DNSStandbyFile role file, then week parity (even
+// week → secondary, odd week → primary).
+func dnsStandbyName(ctx context.Context, conf config, primary, secondary string, env peerEnv) string {
+	if conf.DNSStandbyRecord != "" && env.resolve != nil {
+		name, err := standbyFromDNS(ctx, env.resolve, conf.DNSStandbyRecord, primary, secondary)
+		if err == nil {
+			return name
+		}
+		log.Printf("Peer failover: %v; falling back to role file", err)
+	}
+
 	path := conf.DNSStandbyFile
 	if path == "" {
 		path = defaultDNSStandbyFile
@@ -121,7 +168,45 @@ func dnsStandbyName(conf config, primary, secondary string, now time.Time) strin
 	if name := readRoleFile(path); name != "" && (name == primary || name == secondary) {
 		return name
 	}
-	return scheduledStandby(primary, secondary, now)
+	return scheduledStandby(primary, secondary, env.now)
+}
+
+// standbyFromDNS resolves record and returns whichever of primary and
+// secondary shares an address with it. It fails unless exactly one does.
+func standbyFromDNS(ctx context.Context, resolve hostResolver, record, primary, secondary string) (string, error) {
+	recordAddrs, err := resolve(ctx, record)
+	if err != nil {
+		return "", fmt.Errorf("resolve %s: %w", record, err)
+	}
+	var matches []string
+	for _, name := range []string{primary, secondary} {
+		addrs, err := resolve(ctx, name)
+		if err != nil {
+			return "", fmt.Errorf("resolve %s: %w", name, err)
+		}
+		if sharesAddress(recordAddrs, addrs) {
+			matches = append(matches, name)
+		}
+	}
+	if len(matches) != 1 {
+		return "", fmt.Errorf("%s %v matches %d of [%s, %s]", record, recordAddrs, len(matches), primary, secondary)
+	}
+	return matches[0], nil
+}
+
+func sharesAddress(a, b []string) bool {
+	for _, x := range a {
+		ipX := net.ParseIP(x)
+		if ipX == nil {
+			continue
+		}
+		for _, y := range b {
+			if ipX.Equal(net.ParseIP(y)) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func readRoleFile(path string) string {
@@ -198,6 +283,7 @@ func fetchPeerSnapshot(ctx context.Context, peerURL string) (peerSnapshot, error
 	return peerSnapshot{
 		LastUpdated:  lastUpdated,
 		ChecksActive: report.ChecksActive,
+		Checks:       checksFromSections(report.Sections),
 	}, nil
 }
 

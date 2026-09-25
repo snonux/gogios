@@ -144,7 +144,7 @@ func (s state) report(
 
 	sb.WriteString("This is the recent Gogios report!\n\n")
 	if passive {
-		sb.WriteString("NOTE: Passive mode active, checks were skipped.\n")
+		sb.WriteString("NOTE: Passive mode active, checks were skipped; the state below mirrors the active peer.\n")
 		if passiveReason != "" {
 			sb.WriteString("Reason: ")
 			sb.WriteString(passiveReason)

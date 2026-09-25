@@ -196,6 +196,7 @@ Gogios includes special handling for the Prometheus Watchdog alert, which is typ
 
 * **When Watchdog fires (expected behavior)**: Gogios reports it as OK status, confirming that Alertmanager is working properly.
 * **When Watchdog is absent or not firing (unexpected)**: Gogios reports it as CRITICAL, alerting you that Alertmanager may not be functioning correctly.
+* **When no Prometheus host answers the API**: Gogios reports the Watchdog as CRITICAL too (the Watchdog state cannot be confirmed) and the `Prometheus alerts` connection check as WARNING. Other `Prometheus: *` alerts keep their last known state and age into the stale section until the API answers again.
 
 This ensures you are immediately notified if Alertmanager stops working, preventing a situation where alerts might not be delivered properly.
 
@@ -286,6 +287,18 @@ To create a high-availability Gogios setup, you can install Gogios on two server
 * Set up alternate CRON intervals on both servers. Configure the CRON job on Server A to run Gogios at minutes 0, 10, 20, ..., and on Server B to run at minutes 5, 15, 25, ... This will ensure that if one server goes down, the other server will continue monitoring and sending notifications. 
 * Gogios doesn't support clustering. So it means when both servers are up, unhandled alerts will be notified via E-Mail twice; from each server once. That's the trade-off for simplicity. 
 * There are plans to make it possible to execute certain checks only on certain nodes (e.g. on elected leader or master nodes). This is still in progress (check out my `Gorum` git project).
+
+#### Peer failover (single active checker)
+
+Alternatively, two Gogios instances can elect one checker between them. Set `PeerURL` to the other instance's JSON report (`.../index.json`) and `PeerPrimaryName` / `PeerSecondaryName` to the two hostnames (as `hostname` reports them). The DNS standby always runs the checks; the other node goes passive while the peer's report is fresh (`PeerStaleThresholdS`, default 600), advertises `checksActive`, and the standby answers ping or TCP 443. On any doubt it stays active.
+
+The standby is taken, in order, from:
+
+1. `DNSStandbyRecord` (e.g. `"standby.example.org"`): the peer whose address the record resolves to. Prefer this; it follows the live DNS.
+2. `DNSStandbyFile` (default `/var/nsd/run/current_standby`): a file holding the standby's hostname.
+3. Week parity: even week secondary, odd week primary.
+
+A passive node runs no plugins and sends no mail (except with `-force`). It mirrors the active peer's check state from the peer's JSON report into its own state and status pages, so both instances publish the same current view, and a node that takes over starts from recent state.
 
 # But why?
 

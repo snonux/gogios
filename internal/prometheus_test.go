@@ -259,3 +259,111 @@ func TestMergePrometheusAlertsWatchdogNotFiring(t *testing.T) {
 		t.Errorf("expected not firing message, got: %s", watchdog.Output)
 	}
 }
+
+// unreachablePrometheusConf points at a closed listener, so every API query
+// fails with a connection error.
+func unreachablePrometheusConf(t *testing.T) config {
+	t.Helper()
+	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	host := strings.TrimPrefix(server.URL, "http://")
+	server.Close()
+	return config{PrometheusHosts: []string{host}, PrometheusTimeoutS: 1}
+}
+
+// A previously OK Watchdog must not stay OK when the API cannot be queried:
+// that stale OK hid a Prometheus outage.
+func TestMergePrometheusAlertsUnreachableWatchdogCritical(t *testing.T) {
+	old := time.Now().Add(-2 * time.Hour).Unix()
+	s := state{checks: map[string]checkState{
+		prometheusWatchdogCheck: {Status: nagiosOk, PrevStatus: nagiosOk, Epoch: old, Output: "OK [none]: Alertmanager is working properly"},
+		"Prometheus: HighCPU":   {Status: nagiosWarning, PrevStatus: nagiosWarning, Epoch: old, Output: "HighCPU"},
+	}}
+
+	result := mergePrometheusAlerts(context.Background(), s, unreachablePrometheusConf(t))
+
+	watchdog := result.checks[prometheusWatchdogCheck]
+	if watchdog.Status != nagiosCritical || watchdog.PrevStatus != nagiosOk {
+		t.Fatalf("Watchdog = %v (prev %v), want CRITICAL (prev OK)", watchdog.Status, watchdog.PrevStatus)
+	}
+	if !strings.Contains(watchdog.Output, "unreachable") {
+		t.Errorf("Watchdog output should name the unreachable API, got %q", watchdog.Output)
+	}
+	if watchdog.Epoch <= old {
+		t.Errorf("Watchdog epoch not refreshed: %d", watchdog.Epoch)
+	}
+	if conn := result.checks[prometheusConnCheck]; conn.Status != nagiosWarning {
+		t.Errorf("connection check = %v, want WARNING", conn.Status)
+	}
+	// Other alerts are neither cleared nor re-confirmed while blind.
+	if cpu, ok := result.checks["Prometheus: HighCPU"]; !ok || cpu.Epoch != old {
+		t.Errorf("HighCPU should keep its old state, got %+v (present %v)", cpu, ok)
+	}
+	if !result.hasCriticalChange(config{}) {
+		t.Error("Watchdog OK->CRITICAL must count as a critical change (immediate notification)")
+	}
+}
+
+// A lasting outage refreshes the epochs, so the checks stay unhandled rather
+// than aging into the stale section, and does not re-report a change.
+func TestMergePrometheusAlertsUnreachableTwiceStaysFresh(t *testing.T) {
+	conf := unreachablePrometheusConf(t)
+	old := time.Now().Add(-2 * time.Hour).Unix()
+	s := state{checks: map[string]checkState{
+		prometheusConnCheck:     {Status: nagiosWarning, PrevStatus: nagiosOk, Epoch: old},
+		prometheusWatchdogCheck: {Status: nagiosCritical, PrevStatus: nagiosOk, Epoch: old},
+	}}
+
+	result := mergePrometheusAlerts(context.Background(), s, conf)
+
+	for _, name := range []string{prometheusConnCheck, prometheusWatchdogCheck} {
+		cs := result.checks[name]
+		if cs.Epoch <= old {
+			t.Errorf("%s epoch not refreshed", name)
+		}
+		if cs.changed() {
+			t.Errorf("%s reported as changed on a repeated failure: %v -> %v", name, cs.PrevStatus, cs.Status)
+		}
+	}
+}
+
+// Recovery flips both checks back to OK.
+func TestMergePrometheusAlertsRecovered(t *testing.T) {
+	resp := prometheusResponse{Status: "success"}
+	resp.Data.Alerts = []prometheusAlert{{Labels: map[string]string{"alertname": "Watchdog"}, State: "firing"}}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(resp)
+	}))
+	defer server.Close()
+
+	s := state{checks: map[string]checkState{
+		prometheusConnCheck:     {Status: nagiosWarning, PrevStatus: nagiosWarning},
+		prometheusWatchdogCheck: {Status: nagiosCritical, PrevStatus: nagiosCritical},
+	}}
+	conf := config{PrometheusHosts: []string{strings.TrimPrefix(server.URL, "http://")}, PrometheusTimeoutS: 2}
+
+	result := mergePrometheusAlerts(context.Background(), s, conf)
+
+	if cs := result.checks[prometheusConnCheck]; cs.Status != nagiosOk || cs.PrevStatus != nagiosWarning {
+		t.Errorf("connection check = %v (prev %v), want OK (prev WARNING)", cs.Status, cs.PrevStatus)
+	}
+	if cs := result.checks[prometheusWatchdogCheck]; cs.Status != nagiosOk || cs.PrevStatus != nagiosCritical {
+		t.Errorf("Watchdog = %v (prev %v), want OK (prev CRITICAL)", cs.Status, cs.PrevStatus)
+	}
+}
+
+// A pending (not yet firing) Watchdog does not count as firing.
+func TestMergePrometheusAlertsWatchdogPending(t *testing.T) {
+	resp := prometheusResponse{Status: "success"}
+	resp.Data.Alerts = []prometheusAlert{{Labels: map[string]string{"alertname": "Watchdog"}, State: "pending"}}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(resp)
+	}))
+	defer server.Close()
+
+	conf := config{PrometheusHosts: []string{strings.TrimPrefix(server.URL, "http://")}, PrometheusTimeoutS: 2}
+	result := mergePrometheusAlerts(context.Background(), state{checks: map[string]checkState{}}, conf)
+
+	if cs := result.checks[prometheusWatchdogCheck]; cs.Status != nagiosCritical {
+		t.Errorf("pending Watchdog = %v, want CRITICAL", cs.Status)
+	}
+}

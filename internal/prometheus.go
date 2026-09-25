@@ -24,6 +24,18 @@ type prometheusAlert struct {
 	State       string            `json:"state"`
 }
 
+const (
+	// prometheusConnCheck reports whether the Prometheus API answered at all.
+	prometheusConnCheck = "Prometheus alerts"
+	// prometheusWatchdogCheck is the dead man's switch: OK only while the
+	// always-firing Watchdog alert is seen through the Prometheus API.
+	prometheusWatchdogCheck = "Prometheus: Watchdog"
+	prometheusPrefix        = "Prometheus: "
+)
+
+// mergePrometheusAlerts folds the firing Prometheus alerts into state. Every
+// run refreshes the epoch of the connection and Watchdog checks, so neither
+// can age into the stale section while the outcome stays the same.
 func mergePrometheusAlerts(ctx context.Context, state state, conf config) state {
 	if len(conf.PrometheusHosts) == 0 {
 		return state
@@ -31,119 +43,114 @@ func mergePrometheusAlerts(ctx context.Context, state state, conf config) state 
 
 	timeout := time.Duration(conf.PrometheusTimeoutS) * time.Second
 	alerts, host, err := fetchPrometheusAlerts(ctx, conf.PrometheusHosts, timeout)
+	now := time.Now().Unix()
 	if err != nil {
 		log.Printf("Failed to fetch Prometheus alerts from any host: %v", err)
-		checkName := "Prometheus alerts"
-		newStatus := nagiosWarning
-		if prevState, ok := state.checks[checkName]; ok && prevState.Status == newStatus {
-			if prevState.PrevStatus != newStatus {
-				prevState.PrevStatus = newStatus
-				state.checks[checkName] = prevState
-			}
-			return state
-		}
-		cs := checkResult{
-			name:   checkName,
-			output: fmt.Sprintf("WARNING: %v", err),
-			epoch:  time.Now().Unix(),
-			status: newStatus,
-		}
-		state.update(cs)
+		markPrometheusUnreachable(state, err, now)
 		return state
 	}
 
 	log.Printf("Fetched %d firing alerts from Prometheus host %s", len(alerts), host)
+	markPrometheusReachable(state, now)
+	firingAlerts := mergeFiringAlerts(state, alerts, now)
+	clearResolvedPrometheusAlerts(state, firingAlerts)
+	return state
+}
 
-	// Clear the "Prometheus alerts" check if fetch succeeded (was previously failing)
-	checkName := "Prometheus alerts"
-	if prevState, ok := state.checks[checkName]; ok && prevState.Status != nagiosOk {
-		cs := checkResult{
-			name:   checkName,
-			output: "OK: Prometheus connection restored",
-			epoch:  time.Now().Unix(),
-			status: nagiosOk,
-		}
-		state.update(cs)
+// markPrometheusUnreachable records a failed Prometheus API query. The
+// connection check goes WARNING, and the Watchdog goes CRITICAL: an
+// unreachable API is exactly the case the dead man's switch exists for, and
+// keeping the last OK here once reported a healthy Watchdog while Prometheus
+// was down. Other Prometheus alerts keep their last known state and epoch, so
+// they age into the stale section instead of being cleared or re-confirmed.
+func markPrometheusUnreachable(state state, err error, now int64) {
+	state.update(checkResult{
+		name:   prometheusConnCheck,
+		output: fmt.Sprintf("WARNING: %v", err),
+		epoch:  now,
+		status: nagiosWarning,
+	})
+	state.update(checkResult{
+		name:   prometheusWatchdogCheck,
+		output: fmt.Sprintf("CRITICAL [none]: Prometheus API unreachable, Watchdog state unknown: %v", err),
+		epoch:  now,
+		status: nagiosCritical,
+	})
+}
+
+// markPrometheusReachable records a successful Prometheus API query.
+func markPrometheusReachable(state state, now int64) {
+	state.update(checkResult{
+		name:   prometheusConnCheck,
+		output: "OK: Prometheus API reachable",
+		epoch:  now,
+		status: nagiosOk,
+	})
+}
+
+// mergeFiringAlerts turns every firing alert into a check and returns the
+// set of check names that are firing. The Watchdog is inverted: firing is OK,
+// absent is CRITICAL (Alertmanager's pipeline is broken).
+func mergeFiringAlerts(state state, alerts []prometheusAlert, now int64) map[string]bool {
+	firingAlerts := map[string]bool{prometheusWatchdogCheck: true}
+	watchdog := checkResult{
+		name:   prometheusWatchdogCheck,
+		output: "CRITICAL [none]: Watchdog alert is not firing, Alertmanager may not be working",
+		epoch:  now,
+		status: nagiosCritical,
 	}
 
-	// Track currently firing alerts to clear resolved ones later
-	firingAlerts := make(map[string]bool)
-	watchdogFiring := false
-
 	for _, alert := range alerts {
-		alertname := alert.Labels["alertname"]
-
-		// Special handling for Prometheus Watchdog alert
-		if alertname == "Watchdog" {
-			if alert.State == "firing" {
-				watchdogFiring = true
-				firingAlerts["Prometheus: Watchdog"] = true
-				// Watchdog is firing as expected, treat as OK
-				cs := checkResult{
-					name:   "Prometheus: Watchdog",
-					output: "OK [none]: Alertmanager is working properly",
-					epoch:  time.Now().Unix(),
-					status: nagiosOk,
-				}
-				state.update(cs)
-			}
-			continue
-		}
-
 		if alert.State != "firing" {
 			continue
 		}
-
-		name := fmt.Sprintf("Prometheus: %s", alertname)
-		firingAlerts[name] = true
-		severity := alert.Labels["severity"]
-		description := alert.Annotations["summary"]
-		if description == "" {
-			description = alert.Annotations["description"]
+		alertname := alert.Labels["alertname"]
+		if alertname == "Watchdog" {
+			watchdog.output = "OK [none]: Alertmanager is working properly"
+			watchdog.status = nagiosOk
+			continue
 		}
-		if description == "" {
-			description = "no description"
-		}
-
-		status := nagiosWarning
-		if severity == "critical" {
-			status = nagiosCritical
-		}
-
-		cs := checkResult{
-			name:   name,
-			output: fmt.Sprintf("%s [%s]: %s", alertname, severity, description),
-			epoch:  time.Now().Unix(),
-			status: status,
-		}
+		cs := alertCheckResult(alert, now)
+		firingAlerts[cs.name] = true
 		state.update(cs)
 	}
 
-	// If Watchdog is not firing, alert as critical
-	if !watchdogFiring {
-		firingAlerts["Prometheus: Watchdog"] = true
-		cs := checkResult{
-			name:   "Prometheus: Watchdog",
-			output: "CRITICAL [none]: Watchdog alert is not firing, Alertmanager may not be working",
-			epoch:  time.Now().Unix(),
-			status: nagiosCritical,
-		}
-		state.update(cs)
+	state.update(watchdog)
+	return firingAlerts
+}
+
+// alertCheckResult maps one firing, non-Watchdog alert to a check result:
+// severity "critical" is CRITICAL, anything else WARNING.
+func alertCheckResult(alert prometheusAlert, now int64) checkResult {
+	alertname := alert.Labels["alertname"]
+	severity := alert.Labels["severity"]
+	description := alert.Annotations["summary"]
+	if description == "" {
+		description = alert.Annotations["description"]
+	}
+	if description == "" {
+		description = "no description"
 	}
 
-	// Clear any Prometheus alerts that are no longer firing
-	clearResolvedPrometheusAlerts(state, firingAlerts)
+	status := nagiosWarning
+	if severity == "critical" {
+		status = nagiosCritical
+	}
 
-	return state
+	return checkResult{
+		name:   prometheusPrefix + alertname,
+		output: fmt.Sprintf("%s [%s]: %s", alertname, severity, description),
+		epoch:  now,
+		status: status,
+	}
 }
 
 // clearResolvedPrometheusAlerts removes Prometheus alerts from state that are
 // no longer firing. This prevents stale alerts from accumulating.
 func clearResolvedPrometheusAlerts(state state, firingAlerts map[string]bool) {
-	const prometheusPrefix = "Prometheus: "
 	for name := range state.checks {
 		// Skip non-Prometheus alerts and the connection status check
-		if !strings.HasPrefix(name, prometheusPrefix) || name == "Prometheus alerts" {
+		if !strings.HasPrefix(name, prometheusPrefix) || name == prometheusConnCheck {
 			continue
 		}
 		// If this alert is not currently firing, remove it from state
