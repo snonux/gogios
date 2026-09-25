@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -103,16 +104,16 @@ func TestFetchFromHost(t *testing.T) {
 }
 
 func TestFetchPrometheusAlertsFailover(t *testing.T) {
-	callCount := 0
+	var callCount atomic.Int32
 
 	server1 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		callCount++
+		callCount.Add(1)
 		time.Sleep(3 * time.Second) // exceed timeout
 	}))
 	defer server1.Close()
 
 	server2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		callCount++
+		callCount.Add(1)
 		resp := prometheusResponse{
 			Status: "success",
 			Data: struct {

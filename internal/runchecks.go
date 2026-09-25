@@ -3,17 +3,24 @@ package internal
 import (
 	"context"
 	"log"
+	"maps"
 	"math/rand"
 	"sync"
 	"time"
 )
 
+// runChecks runs every configured check and folds the results into state.
+// Results are written by one collector goroutine only; the loop that decides
+// which checks to skip reads a copy of the previous state taken before the
+// collector starts, since reading state.checks while the collector writes it
+// is a data race (and can abort the run with a fatal concurrent map access).
 func runChecks(ctx context.Context, state state, conf config) state {
 	var (
 		limitCh  = make(chan struct{}, conf.CheckConcurrency)
 		inputCh  = make(chan namedCheck)
 		outputCh = make(chan checkResult)
 		deps     = newDependency(conf)
+		previous = maps.Clone(state.checks)
 	)
 
 	go func() {
@@ -37,23 +44,10 @@ func runChecks(ctx context.Context, state state, conf config) state {
 	inputWg.Add(len(conf.Checks))
 
 	for check := range inputCh {
-		if age := state.age(check.name); check.RunInterval > int(age.Seconds()) {
-			lastCheckState, ok := state.checks[check.name]
-			if ok {
-				log.Printf("Skipping %s: interval not yet reached (%v (%v) <= %v)", check.name,
-					int(age.Seconds()), age, check.RunInterval)
-				outputCh <- checkResult{
-					name:          check.name,
-					output:        lastCheckState.Output,
-					epoch:         lastCheckState.Epoch,
-					status:        lastCheckState.Status,
-					federatedFrom: lastCheckState.FederatedFrom,
-				}
-				inputWg.Done()
-				continue
-			}
-			log.Println("Something went wrong... expected check state for", check,
-				"bug got nothing! Proceeding anyway")
+		if result, ok := reuseCheckResult(check, previous, deps); ok {
+			outputCh <- result
+			inputWg.Done()
+			continue
 		}
 
 		go func(check namedCheck) {
@@ -70,6 +64,36 @@ func runChecks(ctx context.Context, state state, conf config) state {
 	log.Println("All outputs collected!")
 
 	return state
+}
+
+// reuseCheckResult returns the previous result of check when its RunInterval
+// has not elapsed yet. It settles the check's dependency as runCheck would
+// (CRITICAL is not OK, anything else OK), so checks depending on a skipped
+// one do not wait for it until the run times out.
+func reuseCheckResult(check namedCheck, previous map[string]checkState, deps dependency) (checkResult, bool) {
+	last, ok := previous[check.name]
+	if !ok {
+		return checkResult{}, false
+	}
+	age := time.Since(time.Unix(last.Epoch, 0))
+	if check.RunInterval <= int(age.Seconds()) {
+		return checkResult{}, false
+	}
+
+	log.Printf("Skipping %s: interval not yet reached (%v (%v) <= %v)", check.name,
+		int(age.Seconds()), age, check.RunInterval)
+	if last.Status == nagiosCritical {
+		deps.notOk(check.name)
+	} else {
+		deps.ok(check.name)
+	}
+	return checkResult{
+		name:          check.name,
+		output:        last.Output,
+		epoch:         last.Epoch,
+		status:        last.Status,
+		federatedFrom: last.FederatedFrom,
+	}, true
 }
 
 func runCheck(ctx context.Context, limitCh chan struct{}, deps dependency,
