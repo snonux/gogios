@@ -1,9 +1,11 @@
 package internal
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 )
@@ -98,4 +100,54 @@ func assertNoTempFiles(t *testing.T, dir string) {
 	if len(matches) > 0 {
 		t.Errorf("temp files left behind: %v", matches)
 	}
+}
+
+// Readers (httpd, the peer) that open the report while runs keep replacing
+// it always read one complete, valid version: the rename swaps the whole
+// file, and an open descriptor keeps reading the version it opened.
+func TestJSONReportReadersNeverSeeTornFile(t *testing.T) {
+	dir := t.TempDir()
+	conf := config{HTMLStatusFile: filepath.Join(dir, "index.html")}
+	jsonFile := jsonReportPath(conf.HTMLStatusFile)
+	states := []state{
+		{checks: map[string]checkState{"Short": {Status: nagiosOk, Output: "ok"}}},
+		{checks: map[string]checkState{"Long": {Status: nagiosCritical, Output: strings.Repeat("long output ", 5000)}}},
+	}
+	if err := persistJSONReport(states[0], "s", conf, true); err != nil {
+		t.Fatal(err)
+	}
+
+	done := make(chan struct{})
+	var wg sync.WaitGroup
+	for r := 0; r < 4; r++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for {
+				select {
+				case <-done:
+					return
+				default:
+				}
+				data, err := os.ReadFile(jsonFile)
+				if err != nil {
+					t.Error(err)
+					return
+				}
+				if !json.Valid(data) {
+					t.Errorf("reader saw an invalid report of %d bytes", len(data))
+					return
+				}
+			}
+		}()
+	}
+	for i := 0; i < 200; i++ {
+		if err := persistJSONReport(states[i%2], "s", conf, true); err != nil {
+			t.Error(err)
+			break
+		}
+	}
+	close(done)
+	wg.Wait()
+	assertNoTempFiles(t, dir)
 }

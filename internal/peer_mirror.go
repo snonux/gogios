@@ -6,7 +6,8 @@ import "log"
 // The unhandled, stale, suppressed and OK sections together hold every check
 // exactly once (see jsonReport); the status-changed section only adds the
 // previous status of checks that changed in the peer's last run. It returns
-// nil when the report lists no checks, e.g. one from an older Gogios.
+// nil when the report lists no checks, e.g. one from an older Gogios. The
+// peer's output is sanitised like local plugin output (see sanitizeOutput).
 func checksFromSections(sections jsonSections) map[string]checkState {
 	checks := make(map[string]checkState)
 	for _, section := range [][]jsonCheck{sections.Unhandled, sections.Stale, sections.Suppressed, sections.Ok} {
@@ -16,7 +17,7 @@ func checksFromSections(sections jsonSections) map[string]checkState {
 				Status:        status,
 				PrevStatus:    status,
 				Epoch:         jc.Epoch,
-				Output:        jc.Output,
+				Output:        sanitizeOutput(jc.Output), // an older peer may not sanitise
 				FederatedFrom: jc.FederatedFrom,
 				Host:          jc.Host,
 				// The peer's Hidden is this copy's previous one, so the

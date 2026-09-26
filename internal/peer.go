@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"net/http"
@@ -15,6 +16,10 @@ import (
 )
 
 const defaultDNSStandbyFile = "/var/nsd/run/current_standby"
+
+// maxPeerReportBytes caps the peer report read into memory. A real report is
+// around 100 KiB; the cap only stops a misbehaving peer or proxy.
+const maxPeerReportBytes = 8 << 20
 
 // peerReport is the part of the peer's JSON report (see jsonReport) that
 // failover reads: freshness, whether it runs checks, and its check sections,
@@ -247,6 +252,8 @@ func weekNumberSunday(t time.Time) int {
 	return 1 + (daysSinceFirstSunday / 7)
 }
 
+// fetchPeerSnapshot fetches and decodes the peer's JSON report (see
+// decodePeerReport).
 func fetchPeerSnapshot(ctx context.Context, peerURL string) (peerSnapshot, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, peerURL, nil)
 	if err != nil {
@@ -267,8 +274,8 @@ func fetchPeerSnapshot(ctx context.Context, peerURL string) (peerSnapshot, error
 		return peerSnapshot{}, fmt.Errorf("unexpected status %d", resp.StatusCode)
 	}
 
-	var report peerReport
-	if err := json.NewDecoder(resp.Body).Decode(&report); err != nil {
+	report, err := decodePeerReport(resp.Body)
+	if err != nil {
 		return peerSnapshot{}, err
 	}
 	if report.LastUpdated == "" {
@@ -313,4 +320,25 @@ func probeHostTCP(ctx context.Context, host, port string) error {
 	}
 	_ = conn.Close()
 	return nil
+}
+
+// decodePeerReport reads one peer report of at most maxPeerReportBytes. The
+// whole body must be exactly one JSON value: json.Decoder.Decode, used before,
+// stops after the first value, so a body with a valid prefix and trailing
+// bytes (a spliced or concatenated response) was mirrored silently.
+// json.Unmarshal also rejects raw control characters in strings, and a body
+// cut short fails to parse.
+func decodePeerReport(body io.Reader) (peerReport, error) {
+	data, err := io.ReadAll(io.LimitReader(body, maxPeerReportBytes+1))
+	if err != nil {
+		return peerReport{}, fmt.Errorf("read peer report: %w", err)
+	}
+	if len(data) > maxPeerReportBytes {
+		return peerReport{}, fmt.Errorf("peer report exceeds %d bytes", maxPeerReportBytes)
+	}
+	var report peerReport
+	if err := json.Unmarshal(data, &report); err != nil {
+		return peerReport{}, fmt.Errorf("decode peer report: %w", err)
+	}
+	return report, nil
 }

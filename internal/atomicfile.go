@@ -12,6 +12,10 @@ import (
 // Gogios runs writing the same file at once cannot interleave their bytes or
 // rename each other's half-written file into place; readers (httpd, the
 // peer, the next run) see either the old or the new content, never a mix.
+// The data is fsynced before the rename: without it a crash or power loss
+// right after the rename can leave the new name pointing at a file whose
+// data never reached the disk (empty or garbage) on filesystems that commit
+// the rename first (e.g. FFS with soft updates).
 func writeFileAtomic(path string, data []byte, perm fs.FileMode) (err error) {
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -37,6 +41,9 @@ func writeFileAtomic(path string, data []byte, perm fs.FileMode) (err error) {
 	// the web server, so set the requested mode explicitly.
 	if err = f.Chmod(perm); err != nil {
 		return fmt.Errorf("chmod %s: %w", tmp, err)
+	}
+	if err = f.Sync(); err != nil {
+		return fmt.Errorf("sync %s: %w", tmp, err)
 	}
 	if err = f.Close(); err != nil {
 		return fmt.Errorf("close %s: %w", tmp, err)

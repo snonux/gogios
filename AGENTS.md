@@ -62,7 +62,8 @@ internal/           # Core implementation
   lock.go           # Run lock (StateDir/gogios.lock)
   runlimits.go      # Watchdog, stuck-lock alert, stale temp cleanup
   peer_local_check.go # "Gogios peer host checks" (peer report availability)
-  atomicfile.go     # Atomic state/report writes
+  atomicfile.go     # Atomic, fsynced state/report writes
+  sanitize.go       # Control-character/UTF-8 cleanup of check output
 ```
 
 ## Code Conventions

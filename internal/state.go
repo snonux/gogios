@@ -101,7 +101,8 @@ func (conf config) keepsUnconfigured(name string, cs checkState) bool {
 
 // update records result as the check's current state. The previous status
 // and Hidden flag become PrevStatus and PrevHidden. Host starts empty; the
-// collector tags host-local results afterwards (see tagLocal).
+// collector tags host-local results afterwards (see tagLocal). The output is
+// sanitised here, where plugin output enters the state (see sanitizeOutput).
 func (s state) update(result checkResult) {
 	prevStatus := nagiosUnknown
 	prevState, ok := s.checks[result.name]
@@ -113,7 +114,7 @@ func (s state) update(result checkResult) {
 		Status:        result.status,
 		PrevStatus:    prevStatus,
 		Epoch:         result.epoch,
-		Output:        result.output,
+		Output:        sanitizeOutput(result.output),
 		FederatedFrom: result.federatedFrom,
 		PrevHidden:    prevState.Hidden,
 	}
@@ -129,12 +130,14 @@ func (s state) age(name string) time.Duration {
 	return time.Duration(0)
 }
 
-// To be used to merge the state of another server running Gogios
+// To be used to merge the state of another server running Gogios. The other
+// server's output is sanitised like local plugin output (see sanitizeOutput).
 func (s state) merge(other state) error {
 	for name, cs := range other.checks {
 		if _, ok := s.checks[name]; ok {
 			return fmt.Errorf("can't merge state due to duplicate check name '%s'", name)
 		}
+		cs.Output = sanitizeOutput(cs.Output)
 		s.checks[name] = cs
 	}
 	return nil
